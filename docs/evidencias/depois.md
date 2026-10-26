@@ -1,6 +1,6 @@
 # Evidências do "depois"
 
-Medições feitas em **2026-10-26**, numa única sessão (de 22:38 a 22:50 UTC), sobre o commit `9689381`, com timeout, circuit breaker, cache e resposta parcial ligados. O "antes" está em [antes.md](antes.md).
+Medições feitas em **2026-10-26**, numa única sessão (de 22:38 a 23:09 UTC), sobre o commit `9689381`, com timeout, circuit breaker, cache e resposta parcial ligados. O "antes" está em [antes.md](antes.md).
 
 Cada evidência tem **comando ou consulta + artefato + legenda**. Os gráficos foram capturados com o ambiente de pé, porque `make down` apaga o Jaeger e o Prometheus.
 
@@ -9,15 +9,17 @@ Cada evidência tem **comando ou consulta + artefato + legenda**. Os gráficos f
 | Etapa | Horário (UTC) | O que rodou | Para quê |
 |---|---|---|---|
 | Execução padrão | 22:38:26 a 22:38:37 | `make down && make reproduce` (10 de baseline, 200 com 50 em voo) | evidências 1, 4, 7 e a conta de consultas; **é a mesma carga do "antes"** |
-| Variação declarada 1 | 22:39:01 a 22:39:17 | `make load ARGS="-distinct 200"` | evidência 3 |
+| Variação declarada 1 | 22:39:01 a 22:39:17 | `make load ARGS="-distinct 200"` | complemento da evidência 3 |
 | Variação declarada 2 | 22:40:04 a 22:43:42 | uma cotação nova a cada 8 s, até os dois circuitos fecharem | completar o degrau da evidência 5 |
 | Variação declarada 3 | 22:45:43 a 22:46:34 | `make load ARGS="-tenant corretora-b -distinct 50 -concurrency 2 -requests 600 -baseline 0"` | evidência 6 |
+| Variação declarada 4 | 23:05:42 a 23:08:18 | 20 cotações novas em paralelo e, com os circuitos abertos, as mesmas 20 de novo | evidência 3 |
 
 **Por que as variações** (o enunciado permite variação declarada para explorar o comportamento, desde que a evidência principal venha dos defaults):
 
 - **Variação 1:** a carga padrão repete só 5 cotações. Elas já estão no cache quando o circuito da `partner-flaky` abre, então nenhuma requisição chega a ser curto-circuitada. Com 200 cotações distintas, as requisições chegam às parceiras e o curto-circuito aparece.
 - **Variação 2:** o meio-aberto só fecha depois de 2 requisições de teste com sucesso (`BREAKER_HALF_OPEN_REQUESTS=2`), e isso exige tráfego depois que a carga acaba.
 - **Variação 3:** a carga padrão dura 11 s, e as métricas são exportadas a cada 10 s. O contador de *hit* nasce já com 205 entre duas amostras, e o Prometheus não vê a subida. Com a `corretora-b` (cache frio, porque a chave tem a corretora) e um ritmo mais lento, o aquecimento dura cerca de um minuto.
+- **Variação 4:** na variação 1 a parceira curto-circuitada não é chamada, mas a requisição ainda espera a `partner-slow`, que é chamada (1,7 s no total). Para mostrar uma requisição curto-circuitada que **responde rápido**, como pede o enunciado, as cotações precisam ter o resto no cache. A primeira tentativa, uma cotação a cada ~3 s, **não abriu o circuito**: cada janela de 30 s juntou ~10 chamadas à `partner-flaky`, e a taxa de falha ficou abaixo de 50% (15 em 40). A segunda mandou 20 cotações em paralelo, a `partner-degrading` passou de 6 simultâneas e estourou o timeout, e os dois circuitos abriram; as mesmas 20, reenviadas em seguida, responderam em ~4 ms. O registro das duas tentativas está em [variacao-curto-circuito-rapido.txt](variacao-curto-circuito-rapido.txt).
 
 Nenhuma variação mexe nos perfis das parceiras: o `docker-compose.yml` das parceiras é o original.
 
@@ -52,28 +54,29 @@ O p95 do baseline continua em ~2 s porque as 5 primeiras requisições encontram
   ```
   (mais `go test -count=1 -v ./...` para listar cada teste pelo nome)
 - **Artefato:** [make-test.txt](make-test.txt)
-- **Legenda:** `make test` termina com código 0; são 100 testes passando, nenhum falhando ou pulado, cada um marcado como `[original]` (veio no repositório) ou `[novo]` (desta entrega).
+- **Legenda:** `make test` termina com código 0; são 100 testes passando (64 que vieram no repositório e 36 desta entrega, sem contar subtestes), nenhum falhando ou pulado, cada um marcado como `[original]` ou `[novo]`.
 
 ---
 
 ## 3. Trace com o breaker aberto
 
-- **Consulta:** Jaeger em http://localhost:16686 → serviço `quotation-api` → tag `breaker.short_circuited=true`, janela da variação 1. Exportado pela API do Jaeger:
+- **Consulta:** Jaeger em http://localhost:16686 → serviço `quotation-api` → tag `breaker.short_circuited=true`, janela de 23:08:13 a 23:08:19 UTC (passo 2 da variação 4). Exportado pela API do Jaeger:
   ```bash
-  curl -s http://localhost:16686/api/traces/94274bac30398eb4e69527eacf15b272
+  curl -s http://localhost:16686/api/traces/c85ec2854929ca873e6bebbeb2330d0e
   ```
-- **Artefato:** [trace-depois-breaker-aberto.json](trace-depois-breaker-aberto.json)
-- **Legenda:** com o circuito aberto, a `partner-flaky` e a `partner-degrading` não são chamadas: os spans delas duram 0 ms e não têm `HTTP POST` embaixo; só a `partner-slow` sai para a rede, e a corretora recebe 200 com as duas ausentes em `missing_partners`.
+- **Artefato:** [trace-depois-breaker-aberto-rapido.json](trace-depois-breaker-aberto-rapido.json)
+- **Legenda:** com os circuitos abertos, a `partner-flaky` e a `partner-degrading` não são chamadas (nenhum `HTTP POST` no trace), a `partner-slow` vem do cache, e a cotação responde em 0,59 ms com as duas ausentes em `missing_partners`.
 
 | Span | Início | Duração | Atributos |
 |---|---|---|---|
-| `POST /quotes` | +0 ms | 1663 ms | 200, `quote.degraded=true`, `quote.missing_partners=2` |
-| `quote partner-slow` | +0 ms | 1662 ms | `quote.source=partner`, `cache.result=miss` |
-| └ `HTTP POST` → partner-slow | +0 ms | 1662 ms | 200 |
-| `quote partner-flaky` | +1661 ms | **0 ms** | `breaker.short_circuited=true`, `quote.missing_reason=circuit_open` |
-| `quote partner-degrading` | +1661 ms | **0 ms** | `breaker.short_circuited=true`, `quote.missing_reason=circuit_open` |
+| `POST /quotes` | +0,00 ms | **0,59 ms** | 200, `quote.degraded=true`, `quote.from_cache=1`, `quote.missing_partners=2` |
+| `quote partner-slow` | +0,36 ms | 0,01 ms | `quote.source=cache`, `cache.result=hit` |
+| `quote partner-flaky` | +0,48 ms | 0,04 ms | `breaker.short_circuited=true`, `quote.missing_reason=circuit_open` |
+| `quote partner-degrading` | +0,53 ms | 0,01 ms | `breaker.short_circuited=true`, `quote.missing_reason=circuit_open` |
 
-Na janela da variação 1, 197 traces tiveram ao menos uma parceira curto-circuitada, e 140 tiveram as duas.
+No passo 2 da variação 4, 15 traces tiveram ao menos uma parceira curto-circuitada, e 6 tiveram as duas.
+
+**Complemento, da variação 1:** [trace-depois-breaker-aberto.json](trace-depois-breaker-aberto.json) (trace `94274bac30398eb4e69527eacf15b272`). Ali a cotação era nova: a `partner-slow` foi chamada (1662 ms, com `HTTP POST`), e a `partner-flaky` e a `partner-degrading`, com o circuito aberto, ficaram em 0 ms e sem `HTTP POST`. O curto-circuito não custa nada; o tempo total é o da parceira que foi chamada. Nessa janela, 197 traces tiveram ao menos uma parceira curto-circuitada, e 140 tiveram as duas.
 
 ---
 
@@ -125,6 +128,8 @@ Na janela da variação 1, 197 traces tiveram ao menos uma parceira curto-circui
 - **Legenda:** o hit rate fica em 0% enquanto as 50 primeiras cotações da `corretora-b` são novas, salta para 90% quando o gerador volta a repeti-las, e sobe até 97% conforme as cotações da `partner-flaky` que tinham falhado também entram no cache.
 
 O salto, em vez de uma curva suave, é propriedade do gerador, que percorre as cotações em ordem. O 0% em 22:43 são as sondas da variação 2, todas com cotação nova. **Este valor é da carga, não de produção:** o hit rate da §8 do SAD sai do pressuposto de recotação P1 (40%).
+
+**Por que uma variação, e não a carga padrão:** o enunciado espera um gráfico que "beira 98%" com a carga padrão. Aqui, a carga padrão dura 11 s e as métricas são exportadas a cada 10 s (`internal/platform/telemetry.go`, que é a telemetria pronta e fica fora do escopo), então o Prometheus não vê a subida. É uma limitação do ambiente, documentada no README do processo. Na carga padrão, o hit rate medido pelos contadores foi de **91%** (573 de 630), e não ~98%: o cache é por parceira e não guarda as falhas da `partner-flaky`, então as cotações em que ela falhou voltam a chamá-la na rodada seguinte ([consultas-depois.txt](consultas-depois.txt)).
 
 ---
 

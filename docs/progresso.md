@@ -138,6 +138,7 @@ Depende da Entrega 2 (2D).
 - [ ] **§5 Implementação:** mecanismo → arquivo real; decisão de **hospedagem** (on-premise, cloud ou híbrido) no formato de decisão
 - [ ] **§6 Operação e mudanças:**
   - [ ] Para cada métrica e atributo criados no 2B, **quem olha e para quê** (o enunciado: "a seção 6 do seu SAD vai ter que explicar quem olha aquilo")
+  - [ ] ⚠️ Achado da 2D para a §6 e a §4.2: **com pouco tráfego o breaker quase não abre.** Uma cotação a cada ~3 s junta ~10 chamadas por janela de 30 s, no limite do mínimo, e a `partner-flaky` ficou abaixo de 50% (15 falhas em 40). Em produção (P3, ~100 chamadas por janela) não é problema, mas em horário de pouco movimento uma parceira ruim é chamada por mais tempo. Avaliar se vira limite conhecido ou ajuste de parâmetro (com o SAD e o código juntos)
   - [ ] **3 alertas** (métrica, limiar, ação)
   - [ ] **1 runbook** completo, do sintoma ao escalonamento
   - [ ] Caminho de mudança do TTL
@@ -230,7 +231,7 @@ Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda
 
 - [x] 1. Relatório do `make reproduce` "depois", com a mesma carga → [reproduce-depois.txt](evidencias/reproduce-depois.txt): p95 sob carga **8,01 s → 219 ms**, sucesso **60% → 100%**, vazão 8,0 → 695 req/s
 - [x] 2. Saída do `make test` → [make-test.txt](evidencias/make-test.txt): 100 testes passando, cada um marcado `[original]` ou `[novo]`
-- [x] 3. Trace com breaker aberto → [trace-depois-breaker-aberto.json](evidencias/trace-depois-breaker-aberto.json) (variação declarada 1: `-distinct 200`)
+- [x] 3. Trace com breaker aberto → [trace-depois-breaker-aberto-rapido.json](evidencias/trace-depois-breaker-aberto-rapido.json): as duas parceiras curto-circuitadas, a slow do cache, **0,59 ms** e nenhum `HTTP POST` (variação declarada 4). Complemento da variação 1: [trace-depois-breaker-aberto.json](evidencias/trace-depois-breaker-aberto.json)
 - [x] 4. Trace servido de cache → [trace-depois-cache.json](evidencias/trace-depois-cache.json) (execução padrão)
 - [x] 5. Estado do breaker no tempo → [breaker-estado-depois.png](evidencias/breaker-estado-depois.png) + [breaker-transicoes-depois.txt](evidencias/breaker-transicoes-depois.txt) (variação declarada 2: sondas a cada 8 s)
 - [x] 6. Hit rate do cache → [hit-rate-depois.png](evidencias/hit-rate-depois.png) (variação declarada 3: `corretora-b`, cache frio)
@@ -254,6 +255,7 @@ Depende das duas entregas.
   - [ ] **a chave do cache por extenso** (o enunciado exige no SAD **e** no README)
   - [ ] **o contrato da resposta degradada** (`degraded`, `missing_partners`, `source`, `age_seconds`, `stale`) e o **503 novo** (`no partner insurer available`): o enunciado manda documentar a mudança de contrato no README
   - [ ] as variáveis de configuração novas (`PARTNER_TIMEOUTS`, `BREAKER_*`, `REDIS_*`, `CACHE_*`) e que `Service.Quote`/`NewAPI` sem `WithFallback()` mantêm o comportamento original por causa dos testes originais
+  - [ ] **limitações do ambiente documentadas** (o enunciado manda documentar no README em vez de contornar em silêncio): a carga padrão dura 11 s e as métricas são exportadas a cada 10 s, por isso a subida do hit rate não aparece com ela (evidência 6 veio da variação 3); com a carga padrão nenhuma requisição é curto-circuitada, porque as 5 cotações já estão no cache (evidência 3 veio da variação 4); o hit rate da carga padrão foi 91%, e não ~98%, porque o cache não guarda falha da `partner-flaky`
   - [ ] nomes das métricas e dos atributos criados, com **os dois nomes** de cada métrica (o do código, `partner.breaker.state`, e o do Prometheus, `partner_breaker_state`): o avaliador procura o nome declarado no repositório, e o nome do Prometheus está nos comentários das constantes em `internal/partner/metrics.go` e `internal/quotation/telemetry.go`
   - [ ] o que faria diferente com mais tempo
   - [ ] um parágrafo com o "coração da solução": o que foi protegido, com o quê e quanto custou
@@ -297,4 +299,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Revisão do 2A: corrigido o custo do Redis fora (5 tentativas de conexão, ~430 ms por operação → 1 tentativa e teto real de 100 ms; sem gravação depois de leitura falha); RF do SAD citam os testes pelo nome | `173116b` |
 | 2026-10-26 | 2B: 4 métricas de negócio e 2 marcações no trace, com testes de emissão; nomes conferidos no Prometheus e no Jaeger; SAD §4.5 com os nomes reais | `2f34508` |
 | 2026-10-26 | Revisão do 2B: nomes do Prometheus no código (busca estática), afirmação sem evidência tirada do SAD §4.5, itens de §6, 2D e README | `9689381` |
-| 2026-10-26 | 2D: as 7 evidências do "depois", mais consultas por cotação e busca de dado pessoal, numa única sessão com 3 variações declaradas | este commit |
+| 2026-10-26 | 2D: as 7 evidências do "depois", mais consultas por cotação e busca de dado pessoal, numa única sessão com 3 variações declaradas | `871a645` |
+| 2026-10-26 | Revisão da 2D: evidência 3 trocada por um curto-circuito que responde rápido (0,59 ms, variação 4); limitações para o README; achado do breaker com pouco tráfego | este commit |

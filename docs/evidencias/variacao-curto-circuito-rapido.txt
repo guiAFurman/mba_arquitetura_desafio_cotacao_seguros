@@ -1,0 +1,140 @@
+# Variacao declarada 4 (para a evidencia 3): curto-circuito com resposta rapida
+# Passo 1: cotacoes novas da corretora-b, uma por vez, ate o circuito da partner-flaky abrir.
+# Passo 2: dentro dos 15 s em que ele fica aberto, as mesmas cotacoes de novo. Onde a flaky tinha falhado,
+# a slow e a degrading ja estao no cache e a flaky e curto-circuitada: a cotacao responde em milissegundos.
+# CPF e placa ficticios (88800000xxx, CCR0xxx). Inicio 2026-10-26 23:05:39 UTC
+
+## Passo 1
+23:05:42 cotacao 1: HTTP 200 2.005434s faltou: 
+23:05:45 cotacao 2: HTTP 200 2.024003s faltou: 
+23:05:48 cotacao 3: HTTP 200 1.973977s faltou: 
+23:05:51 cotacao 4: HTTP 200 1.949802s faltou: 
+23:05:54 cotacao 5: HTTP 200 1.997073s faltou: 
+23:05:56 cotacao 6: HTTP 200 1.950918s faltou: 
+23:05:59 cotacao 7: HTTP 200 1.874383s faltou: 
+23:06:02 cotacao 8: HTTP 200 1.935394s faltou: partner-flaky=partner_error 
+23:06:05 cotacao 9: HTTP 200 1.944855s faltou: 
+23:06:08 cotacao 10: HTTP 200 1.961191s faltou: partner-flaky=partner_error 
+23:06:11 cotacao 11: HTTP 200 1.829924s faltou: 
+23:06:14 cotacao 12: HTTP 200 1.806967s faltou: partner-flaky=partner_error 
+23:06:16 cotacao 13: HTTP 200 1.912995s faltou: 
+23:06:19 cotacao 14: HTTP 200 1.893703s faltou: 
+23:06:22 cotacao 15: HTTP 200 2.033866s faltou: partner-flaky=partner_error 
+23:06:25 cotacao 16: HTTP 200 1.869790s faltou: 
+23:06:28 cotacao 17: HTTP 200 1.929928s faltou: 
+23:06:30 cotacao 18: HTTP 200 1.949887s faltou: 
+23:06:33 cotacao 19: HTTP 200 1.907680s faltou: partner-flaky=partner_error 
+23:06:36 cotacao 20: HTTP 200 2.010892s faltou: 
+23:06:39 cotacao 21: HTTP 200 1.979423s faltou: partner-flaky=partner_error 
+23:06:42 cotacao 22: HTTP 200 1.995144s faltou: 
+23:06:45 cotacao 23: HTTP 200 2.009188s faltou: partner-flaky=partner_error 
+23:06:48 cotacao 24: HTTP 200 1.968267s faltou: partner-flaky=partner_error 
+23:06:51 cotacao 25: HTTP 200 1.893828s faltou: 
+23:06:54 cotacao 26: HTTP 200 1.976556s faltou: partner-flaky=partner_error 
+23:06:56 cotacao 27: HTTP 200 1.838202s faltou: 
+23:06:59 cotacao 28: HTTP 200 1.843803s faltou: 
+23:07:02 cotacao 29: HTTP 200 1.841155s faltou: 
+23:07:05 cotacao 30: HTTP 200 1.887664s faltou: 
+23:07:08 cotacao 31: HTTP 200 1.957733s faltou: 
+23:07:10 cotacao 32: HTTP 200 1.904570s faltou: partner-flaky=partner_error 
+23:07:13 cotacao 33: HTTP 200 1.948080s faltou: partner-flaky=partner_error 
+23:07:16 cotacao 34: HTTP 200 1.937385s faltou: 
+23:07:19 cotacao 35: HTTP 200 1.812884s faltou: 
+23:07:22 cotacao 36: HTTP 200 1.959870s faltou: partner-flaky=partner_error 
+23:07:25 cotacao 37: HTTP 200 1.891620s faltou: 
+23:07:28 cotacao 38: HTTP 200 1.982233s faltou: 
+23:07:30 cotacao 39: HTTP 200 1.999210s faltou: partner-flaky=partner_error 
+23:07:33 cotacao 40: HTTP 200 1.877665s faltou: 
+## Passo 2 (circuito da flaky aberto)
+23:07:34 cotacao 1 de novo: HTTP 200 0.003629s faltou: 
+23:07:34 cotacao 2 de novo: HTTP 200 0.003638s faltou: 
+23:07:35 cotacao 3 de novo: HTTP 200 0.003976s faltou: 
+23:07:35 cotacao 4 de novo: HTTP 200 0.005589s faltou: 
+23:07:35 cotacao 5 de novo: HTTP 200 0.004463s faltou: 
+23:07:36 cotacao 6 de novo: HTTP 200 0.003703s faltou: 
+23:07:36 cotacao 7 de novo: HTTP 200 0.003931s faltou: 
+23:07:36 cotacao 8 de novo: HTTP 200 0.159530s faltou: 
+23:07:36 cotacao 9 de novo: HTTP 200 0.003783s faltou: 
+23:07:37 cotacao 10 de novo: HTTP 200 0.190062s faltou: partner-flaky=partner_error 
+23:07:37 cotacao 11 de novo: HTTP 200 0.004881s faltou: 
+23:07:38 cotacao 12 de novo: HTTP 200 0.161341s faltou: partner-flaky=partner_error 
+23:07:38 cotacao 13 de novo: HTTP 200 0.003889s faltou: 
+23:07:38 cotacao 14 de novo: HTTP 200 0.003918s faltou: 
+23:07:39 cotacao 15 de novo: HTTP 200 0.180273s faltou: partner-flaky=partner_error 
+23:07:39 cotacao 16 de novo: HTTP 200 0.004230s faltou: 
+23:07:39 cotacao 17 de novo: HTTP 200 0.003583s faltou: 
+23:07:39 cotacao 18 de novo: HTTP 200 0.003693s faltou: 
+23:07:40 cotacao 19 de novo: HTTP 200 0.167735s faltou: 
+23:07:40 cotacao 20 de novo: HTTP 200 0.004208s faltou: 
+23:07:41 cotacao 21 de novo: HTTP 200 0.194189s faltou: partner-flaky=partner_error 
+23:07:41 cotacao 22 de novo: HTTP 200 0.003967s faltou: 
+23:07:41 cotacao 23 de novo: HTTP 200 0.201458s faltou: 
+23:07:42 cotacao 24 de novo: HTTP 200 0.189981s faltou: 
+23:07:42 cotacao 25 de novo: HTTP 200 0.004516s faltou: 
+23:07:43 cotacao 26 de novo: HTTP 200 0.175836s faltou: 
+23:07:43 cotacao 27 de novo: HTTP 200 0.004302s faltou: 
+23:07:43 cotacao 28 de novo: HTTP 200 0.003822s faltou: 
+23:07:43 cotacao 29 de novo: HTTP 200 0.003848s faltou: 
+23:07:44 cotacao 30 de novo: HTTP 200 0.004420s faltou: 
+23:07:44 cotacao 31 de novo: HTTP 200 0.004156s faltou: 
+23:07:44 cotacao 32 de novo: HTTP 200 0.193886s faltou: 
+23:07:45 cotacao 33 de novo: HTTP 200 0.181920s faltou: partner-flaky=partner_error 
+23:07:45 cotacao 34 de novo: HTTP 200 0.004038s faltou: 
+23:07:45 cotacao 35 de novo: HTTP 200 0.003734s faltou: 
+23:07:46 cotacao 36 de novo: HTTP 200 0.190548s faltou: partner-flaky=partner_error 
+23:07:46 cotacao 37 de novo: HTTP 200 0.003897s faltou: 
+23:07:46 cotacao 38 de novo: HTTP 200 0.003777s faltou: 
+23:07:47 cotacao 39 de novo: HTTP 200 0.169222s faltou: partner-flaky=partner_error 
+23:07:47 cotacao 40 de novo: HTTP 200 0.003959s faltou: 
+## Transicoes no log
+
+# Resultado da primeira tentativa (acima): o circuito da flaky NAO abriu. Com uma cotacao a cada ~3 s, cada janela de 30 s
+# junta ~10 chamadas, e a taxa de falha ficou abaixo de 50% (15 falhas em 40). Os limiares do SAD exigem volume.
+
+# Segunda tentativa: 20 cotacoes novas EM PARALELO. A partner-degrading passa de 6 chamadas simultaneas,
+# estoura o timeout de 500 ms e o circuito dela abre. Depois, as mesmas 20 cotacoes de novo, uma por vez.
+# CPF e placa ficticios (77700000xxx, CCD0xxx). Inicio 2026-10-26 23:08:08 UTC
+## Passo 1: 20 em paralelo
+23:08:11 cotacao 1: HTTP 200 1.945773s faltou: 
+23:08:10 cotacao 2: HTTP 200 1.799844s faltou: 
+23:08:11 cotacao 3: HTTP 200 1.871377s faltou: 
+23:08:11 cotacao 4: HTTP 200 1.871610s faltou: partner-flaky=partner_error 
+23:08:11 cotacao 5: HTTP 200 1.961073s faltou: 
+23:08:11 cotacao 6: HTTP 200 1.994595s faltou: partner-flaky=partner_error 
+23:08:11 cotacao 7: HTTP 200 1.916095s faltou: 
+23:08:11 cotacao 8: HTTP 200 2.217533s faltou: partner-flaky=partner_error 
+23:08:11 cotacao 9: HTTP 200 1.916726s faltou: partner-flaky=partner_error 
+23:08:11 cotacao 10: HTTP 200 2.340991s faltou: partner-degrading=timeout 
+23:08:11 cotacao 11: HTTP 200 1.859565s faltou: partner-flaky=partner_error 
+23:08:11 cotacao 12: HTTP 200 2.314070s faltou: partner-flaky=partner_error partner-degrading=timeout 
+23:08:11 cotacao 13: HTTP 200 2.326296s faltou: partner-degrading=timeout 
+23:08:11 cotacao 14: HTTP 200 2.207983s faltou: partner-flaky=circuit_open partner-degrading=timeout 
+23:08:11 cotacao 15: HTTP 200 2.183059s faltou: partner-degrading=timeout 
+23:08:11 cotacao 16: HTTP 200 2.201864s faltou: partner-degrading=timeout 
+23:08:11 cotacao 17: HTTP 200 2.093371s faltou: partner-flaky=circuit_open partner-degrading=timeout 
+23:08:11 cotacao 18: HTTP 200 2.139784s faltou: partner-flaky=circuit_open partner-degrading=timeout 
+23:08:11 cotacao 19: HTTP 200 2.227381s faltou: partner-flaky=partner_error partner-degrading=timeout 
+23:08:11 cotacao 20: HTTP 200 2.107898s faltou: partner-flaky=circuit_open partner-degrading=timeout 
+2026/10/26 23:08:11 quotation-api: circuit of partner-flaky went from closed to open
+2026/10/26 23:08:11 quotation-api: circuit of partner-degrading went from closed to open
+## Passo 2: as mesmas 20, uma por vez
+23:08:13 cotacao 1 de novo: HTTP 200 0.004539s faltou: 
+23:08:13 cotacao 2 de novo: HTTP 200 0.003716s faltou: 
+23:08:13 cotacao 3 de novo: HTTP 200 0.003735s faltou: 
+23:08:13 cotacao 4 de novo: HTTP 200 0.004177s faltou: partner-flaky=circuit_open 
+23:08:14 cotacao 5 de novo: HTTP 200 0.004327s faltou: 
+23:08:14 cotacao 6 de novo: HTTP 200 0.004897s faltou: partner-flaky=circuit_open 
+23:08:14 cotacao 7 de novo: HTTP 200 0.003800s faltou: 
+23:08:15 cotacao 8 de novo: HTTP 200 0.003931s faltou: partner-flaky=circuit_open 
+23:08:15 cotacao 9 de novo: HTTP 200 0.004198s faltou: partner-flaky=circuit_open 
+23:08:15 cotacao 10 de novo: HTTP 200 0.006070s faltou: partner-degrading=circuit_open 
+23:08:15 cotacao 11 de novo: HTTP 200 0.003765s faltou: partner-flaky=circuit_open 
+23:08:16 cotacao 12 de novo: HTTP 200 0.005282s faltou: partner-flaky=circuit_open partner-degrading=circuit_open 
+23:08:16 cotacao 13 de novo: HTTP 200 0.004951s faltou: partner-degrading=circuit_open 
+23:08:16 cotacao 14 de novo: HTTP 200 0.004419s faltou: partner-flaky=circuit_open partner-degrading=circuit_open 
+23:08:16 cotacao 15 de novo: HTTP 200 0.003741s faltou: partner-degrading=circuit_open 
+23:08:17 cotacao 16 de novo: HTTP 200 0.004266s faltou: partner-degrading=circuit_open 
+23:08:17 cotacao 17 de novo: HTTP 200 0.004219s faltou: partner-flaky=circuit_open partner-degrading=circuit_open 
+23:08:17 cotacao 18 de novo: HTTP 200 0.003858s faltou: partner-flaky=circuit_open partner-degrading=circuit_open 
+23:08:17 cotacao 19 de novo: HTTP 200 0.003671s faltou: partner-flaky=circuit_open partner-degrading=circuit_open 
+23:08:18 cotacao 20 de novo: HTTP 200 0.003922s faltou: partner-flaky=circuit_open partner-degrading=circuit_open 
