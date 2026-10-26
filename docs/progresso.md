@@ -178,10 +178,12 @@ Depende da **1A**: nenhum número entra no código sem estar defendido no SAD.
 
 ### 2A. Mecanismos (um por vez, com o teste junto)
 
-- [x] **Timeout** em `internal/partner/client.go` (`WithTimeouts`, por parceira; `TimedOut` e `CanceledByCaller` classificam o erro)
+- [x] **Timeout** em `internal/partner/client.go` (`WithTimeouts`: o `http.Client` deixa de ter `Timeout` zero e passa a 2 s, o maior teto; cada chamada corta no teto da sua parceira; `TimedOut` e `CanceledByCaller` classificam o erro)
 - [x] **Circuit breaker** em `internal/partner/breaker.go`: gobreaker v2.4.0, um por parceira, três estados nomeados (`StateClosed`, `StateHalfOpen`, `StateOpen`), e o estado aberto **não chama** a parceira (`ErrCircuitOpen`)
 - [ ] **Cache Redis** com chave contendo `tenant_id`, e política de invalidação implementada
 - [ ] **Fallback** em `internal/quotation/service.go`, refletido no `Response` de `internal/quotation/request.go`
+  - [ ] ⚠️ `Service.Quote` **e** `NewAPI` mantêm o comportamento original (dois testes originais exigem o 502); o fallback entra por um método novo no `Service` e uma opção nova no `NewAPI`, ligada só no `main.go`
+- [ ] Ligar o Redis no `docker-compose.yml` (só variáveis da `quotation-api`; perfis das parceiras intocados)
 - [x] Parâmetros de timeout e breaker em `internal/platform/config.go` (`PARTNER_TIMEOUTS`, `PARTNER_TIMEOUT_DEFAULT`, `BREAKER_*`), ligados em `cmd/quotation-api/main.go`
 - [ ] Parâmetros do cache (Redis, TTL, segredo do HMAC) em `internal/platform/config.go`
 
@@ -270,4 +272,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Estudo das opções das decisões D1 a D10 (`docs/estudo-decisoes.md`) | `dfeaa63` |
 | 2026-10-26 | SAD §1 a §4 (`docs/sad.md`) e tabela de decisões fixadas | `5513fa4` |
 | 2026-10-26 | Revisão antes do 2A: evidência das 545 consultas, gatilho do L1 corrigido, gobreaker v2.4.0 conferido na fonte | `6289ebc` |
-| 2026-10-26 | 2A: timeout por parceira e circuit breaker por parceira, com testes; SAD §4.2 corrigido (abre na requisição 12 com o gobreaker) | este commit |
+| 2026-10-26 | 2A: timeout por parceira e circuit breaker por parceira, com testes; SAD §4.2 corrigido (abre na requisição 12 com o gobreaker) | `83b49f4` |
+| 2026-10-26 | Revisão do 2A contra o enunciado: `http.Client.Timeout` deixa de ser zero; achado o teste do handler que exige 502 (SAD D9 atualizado) | este commit |

@@ -238,6 +238,8 @@ Cada decisão está no formato **contexto → opções → escolha → consequê
 
 **O estouro conta como falha para o breaker.** Cancelamento pelo **cliente** (a corretora desistiu da requisição) **não** conta: não é a parceira que falhou.
 
+**Como fica no código** (`internal/partner/client.go`): o `http.Client` deixa de ter `Timeout` zero e passa a ter o maior teto configurado (2000 ms), que nenhuma chamada ultrapassa; cada chamada ainda corta no teto da sua parceira, com `context.WithTimeout`. Os valores vêm de `PARTNER_TIMEOUTS` em `internal/platform/config.go`, e os padrões são os da tabela acima.
+
 **Descartadas.** (a) deixa a `partner-degrading` acumular até 11 chamadas simultâneas antes de estourar (120 + 300 × 6 ≈ 1,9 s) e põe o teto da cotação em 6 s. (b) mata a `partner-slow` em 100% das chamadas, porque ela leva de 1,5 a 1,7 s sempre: o breaker dela abriria e nunca mais fecharia.
 
 **Consequências.**
@@ -375,6 +377,8 @@ Na falha de uma parceira, a **política de cache** (§4.3) pode preencher o luga
 **Contexto.** O teste original `TestOnePartnerDownBringsDownTheWholeRequest` (`internal/quotation/service_test.go`) exige que `Service.Quote` devolva erro quando uma parceira falha, e a regra R9 proíbe quebrá-lo.
 
 **Escolha.** `Service.Quote` fica como está. Um **novo método** em `internal/quotation/service.go` **[proposta]** faz a agregação com cache e resposta parcial, e é ele que o handler passa a usar. Os testes originais continuam testando o comportamento original, que continua existindo.
+
+O mesmo vale para o handler: o teste original `TestQuotesResponds502WithTheNameOfThePartnerThatWentDown` (`internal/quotation/handler_test.go`) monta a API com `NewAPI` e exige **502** quando uma parceira falha. Por isso `NewAPI` mantém o comportamento original, e uma **opção nova** de `NewAPI` **[proposta]** liga o caminho com fallback. O `cmd/quotation-api/main.go` usa essa opção; os testes originais, não. Sem isso, o fallback existiria só no código e a corretora continuaria recebendo 502, que é exatamente o que o enunciado diz que "não conta".
 
 **Descartadas.** Mudar `Service.Quote` e o teste viola R9. Um tipo novo em outro pacote afastaria o fallback do `service.go`, que é onde o enunciado o espera.
 

@@ -28,10 +28,14 @@ type Client struct {
 
 type Option func(*Client)
 
-// WithTimeouts limita a espera por parceira (docs/sad.md §4.1). Sem ela, o cliente espera o tempo
-// que a parceira quiser, como no starter.
+// WithTimeouts limita a espera por parceira (docs/sad.md §4.1): o http.Client deixa de ter Timeout
+// zero e passa a ter o maior teto configurado, e cada chamada ainda corta no teto da sua parceira.
+// Sem esta opcao, o cliente espera o tempo que a parceira quiser, como no starter.
 func WithTimeouts(t platform.Timeouts) Option {
-	return func(c *Client) { c.timeouts = t }
+	return func(c *Client) {
+		c.timeouts = t
+		c.http.Timeout = t.Max()
+	}
 }
 
 func NewClient(opts ...Option) *Client {

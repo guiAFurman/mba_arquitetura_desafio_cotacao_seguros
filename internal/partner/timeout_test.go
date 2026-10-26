@@ -53,6 +53,17 @@ func TestQuoteGivesUpAfterThePartnerTimeout(t *testing.T) {
 	}
 }
 
+func TestTheHTTPClientNoLongerHasAZeroTimeout(t *testing.T) {
+	client := NewClient(WithTimeouts(platform.Timeouts{
+		Default:   time.Second,
+		ByPartner: map[string]time.Duration{"partner-slow": 2 * time.Second, "partner-flaky": 500 * time.Millisecond},
+	}))
+
+	if client.http.Timeout != 2*time.Second {
+		t.Fatalf("http.Client Timeout is %s, want the longest partner timeout (2s)", client.http.Timeout)
+	}
+}
+
 func TestCancellationByTheCallerIsNotATimeout(t *testing.T) {
 	p, closeServer := hangingPartner()
 	defer closeServer()

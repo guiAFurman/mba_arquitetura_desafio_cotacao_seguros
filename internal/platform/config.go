@@ -37,6 +37,15 @@ func (t Timeouts) For(partner string) time.Duration {
 	return t.Default
 }
 
+// Max e o maior teto configurado: nenhuma chamada a parceira espera mais que isso.
+func (t Timeouts) Max() time.Duration {
+	longest := t.Default
+	for _, d := range t.ByPartner {
+		longest = max(longest, d)
+	}
+	return longest
+}
+
 // Breaker sao os parametros do circuit breaker por parceira (docs/sad.md §4.2).
 type Breaker struct {
 	MinRequests      uint32

@@ -14,6 +14,7 @@ Este é o achado mais importante. A regra "não quebre o que já passa" colide c
 |---|---|---|---|
 | `TestOnePartnerDownBringsDownTheWholeRequest` | `internal/quotation/service_test.go:100` | `Service.Quote` **devolve erro** quando uma parceira falha | o **fallback**, se for colocado dentro de `Service.Quote` |
 | `TestQuoteCallsThePartnersSerially` | `internal/quotation/service_test.go:83` | pico de **1** chamada simultânea e duração ≥ 3 × atraso | a **paralelização** (bônus), se for feita em `Service.Quote` |
+| `TestQuotesResponds502WithTheNameOfThePartnerThatWentDown` | `internal/quotation/handler_test.go:95` | a API montada com `NewAPI` responde **502** quando uma parceira falha | o **fallback**, se o handler passar a usá-lo sempre (achado na revisão do 2A) |
 
 **Consequência para o desenho:** o fallback não pode simplesmente substituir o `return err` de `Service.Quote`. Caminhos possíveis, a decidir no SAD §4:
 
@@ -21,7 +22,7 @@ Este é o achado mais importante. A regra "não quebre o que já passa" colide c
 - **(b)** alterar `Service.Quote` e o teste. Isso **viola** a regra do enunciado e conta contra a entrega.
 - **(c)** se nenhuma forma limpa existir, documentar a limitação no README do processo, como o enunciado manda.
 
-A opção (a) parece a única que respeita as duas regras ao mesmo tempo. A mesma lógica vale para a paralelização, se o bônus for feito.
+A opção (a) parece a única que respeita as duas regras ao mesmo tempo. A mesma lógica vale para a paralelização, se o bônus for feito, e para o **handler**: `NewAPI` mantém o 502 original e uma opção nova liga o fallback, usada só pelo `cmd/quotation-api/main.go`.
 
 ---
 
