@@ -8,7 +8,37 @@ Legenda: `[x]` feito · `[ ]` pendente · ⚠️ atenção
 
 ---
 
-## Fase 0 — Ambiente da máquina
+## Visão geral
+
+O trabalho está dividido em quatro blocos:
+
+| Bloco | O que é | Onde fica | Obrigatório? |
+|---|---|---|---|
+| **Preparação** | ambiente, "antes" medido, leitura | `docs/evidencias/` | sim |
+| **Entrega 1 — SAD** | o documento que decide e justifica | `docs/sad.md` | sim |
+| **Entrega 2 — PoC** | código, instrumentação, testes e evidências | `internal/`, `cmd/quotation-api/`, `docs/evidencias/` | sim |
+| **Fechamento** | README do processo e revisão de coerência | raiz e `docs/` | sim |
+| **Extras** | o bônus, que não conta para a nota | — | não |
+
+### Ordem de execução
+
+As duas entregas **não são independentes**: o SAD fixa os números antes do código, e o código devolve as medições para o SAD.
+
+```text
+Preparação
+  └─► 1A. SAD §1–4 (decide TTL, limiares, timeout, chave, fallback)
+        └─► 2A. Mecanismos  ─► 2B. Instrumentação ─► 2C. Testes ─► 2D. Evidências "depois"
+              └─► 1B. SAD §5–8 (com os números medidos) + revisão do §1–4
+                    └─► Fechamento ─► Extras (opcional, só com o resto pronto)
+```
+
+**Status atual:** Preparação quase concluída (faltam as capturas do "antes" e a leitura). Próximo passo: **1A**.
+
+---
+
+## Preparação
+
+### Ambiente da máquina
 
 - [x] Go 1.25.7 instalado (winget `GoLang.Go`)
 - [x] GNU Make 4.4.1 instalado (winget `ezwinports.make`)
@@ -38,14 +68,11 @@ Depois, reiniciar em **Iniciar → Energia → Reiniciar** (não "Desligar"). Ob
 
 </details>
 
----
-
-## Fase 1 — Reproduzir o "antes"
+### Reproduzir o "antes"
 
 - [x] `make down && make reproduce` no código original → [evidencias/reproduce-antes.txt](evidencias/reproduce-antes.txt)
 - [ ] ⚠️ Gráfico do p95 do "antes" no Prometheus, **capturado com o ambiente de pé** (some no `make down`)
 - [ ] ⚠️ Trace da cascata em série no Jaeger (opcional, mas útil para a seção 2 do SAD)
-- [ ] Ler [roteiro-cenario-de-falha.md](roteiro-cenario-de-falha.md)
 
 **Números medidos (2026-10-26):**
 
@@ -57,32 +84,60 @@ Depois, reiniciar em **Iniciar → Energia → Reiniciar** (não "Desligar"). Ob
 | Vazão | 0,5 req/s | 8,0 req/s |
 | Falhas | 5 × 502 `partner-flaky` | 80 × 502 `partner-flaky` |
 
----
+### Entender antes de decidir
 
-## Fase 2 — Entender antes de decidir
-
+- [ ] Ler [roteiro-cenario-de-falha.md](roteiro-cenario-de-falha.md)
 - [ ] Ler o código: `internal/partner/client.go`, `internal/quotation/{service,handler,request}.go`, `cmd/quotation-api/main.go`, `internal/platform/config.go`
 - [ ] Ler `cmd/partner-mock/feasibility_test.go` (molde dos testes determinísticos)
 - [ ] Ler [guia-sad.md](guia-sad.md) e [smoke-test-factibilidade.md](smoke-test-factibilidade.md)
 
 ---
 
-## Fase 3 — SAD, seções 1 a 4 (decidir antes de codar)
+## Entrega 1 — SAD (`docs/sad.md`)
 
-Arquivo: `docs/sad.md`
+O SAD é escrito para três leitores: o **CTO** (quer a conta), **quem opera às 3h** (quer o runbook) e o **encarregado de dados** (quer rastreabilidade e isolamento). Regras: tudo rastreável a arquivo real ou marcado como **proposta**, números em vez de adjetivos, diagramas C4 em Mermaid com setas rotuladas.
 
-- [ ] **Seção 1 — Introdução:** propósito, escopo, restrições × decisões, **3 pressupostos** (valor, origem, consequência se falso), incluindo o **pressuposto de recotação**
-- [ ] **Seção 2 — Visão geral:** C4 nível 1, C4 nível 2 "antes", C4 nível 2 "depois", delta em lista
-- [ ] **Seção 3 — Requisitos:** **6 RF** (≥ 2 criados pela arquitetura) e **5 RNF** (≥ 3 com "hoje" medido, usando os números da Fase 1)
-- [ ] **Seção 4 — Detalhamento:**
+### 1A. Seções 1 a 4 — decidir antes de codar
+
+- [ ] **§1 Introdução:** propósito, escopo, restrições × decisões
+  - [ ] **3 pressupostos** com valor, origem e consequência se falso (incluir o **pressuposto de recotação**, que gera o hit rate da §8)
+- [ ] **§2 Visão geral:**
+  - [ ] C4 nível 1 (contexto)
+  - [ ] C4 nível 2 "antes"
+  - [ ] C4 nível 2 "depois"
+  - [ ] Delta em lista
+- [ ] **§3 Requisitos:**
+  - [ ] **6 RF** com identificador e frase testável (≥ 2 criados pela arquitetura)
+  - [ ] **5 RNF** com métrica, valor, unidade, método e origem (≥ 3 com "hoje" medido, usando os números da Preparação)
+- [ ] **§4 Detalhamento:** cada decisão no formato *contexto → opções → escolha → consequências*, com alternativa descartada e consequências ruins
   - [ ] Decisão do **circuit breaker** (biblioteca, escopo, limiares, janela, tempo aberto, meio aberto)
   - [ ] Decisão do **timeout** (valor e se o estouro conta como falha)
-  - [ ] Decisão do **cache** (TTL, granularidade, **chave escrita por extenso com `tenant_id`**, invalidação, descarte LGPD, comportamento com breaker aberto)
+  - [ ] Decisão do **cache** (TTL, granularidade, **chave por extenso com `tenant_id`**, invalidação, descarte LGPD, comportamento com o breaker aberto)
   - [ ] Decisão do **fallback** (parcial, cotação anterior ou recusa) e mudança no contrato de `Response`
   - [ ] C4 nível 3 da fatia implementada
-  - [ ] **4 limites conhecidos** (concorrência por parceira, breaker em memória, TTL como única invalidação, corretora vizinha barulhenta)
+  - [ ] **4 limites conhecidos** com gatilho e efeito na corretora: concorrência por parceira, breaker em memória, TTL como única invalidação, corretora vizinha barulhenta
 
-**Decisões fixadas** (preencher conforme decidir; o código tem que usar exatamente estes valores):
+### 1B. Seções 5 a 8 — fechar com os números medidos
+
+Depende da Entrega 2 (2D).
+
+- [ ] **§5 Implementação:** mecanismo → arquivo real; decisão de **hospedagem** (on-premise, cloud ou híbrido) no formato de decisão
+- [ ] **§6 Operação e mudanças:**
+  - [ ] **3 alertas** (métrica, limiar, ação)
+  - [ ] **1 runbook** completo, do sintoma ao escalonamento
+  - [ ] Caminho de mudança do TTL
+- [ ] **§7 Recuperação de desastres:**
+  - [ ] RTO e RPO por classe de dado
+  - [ ] **3 cenários** (efeito no cliente, custo do modo degradado, caminho de volta): Redis perdido, parceira fora por 6 h, perda do site ou da região
+- [ ] **§8 Tecnologias, custos e pessoal:**
+  - [ ] Conta de parceiro: hoje, hit rate 0, e ≥ 2 hit rates que o TTL sustente
+  - [ ] Infraestrutura, pessoal e veredito de payback
+  - [ ] **Custo de auditoria** no ano 1 e no ano 5, por **cotação apresentada**
+- [ ] Revisar as §1–4 com o que a implementação provou
+
+### Decisões fixadas
+
+Preencher conforme decidir na §4. O código tem que usar **exatamente** estes valores.
 
 | Parâmetro | Valor | Onde está defendido |
 |---|---|---|
@@ -97,23 +152,23 @@ Arquivo: `docs/sad.md`
 | Chave do cache (por extenso) | — | SAD §4 e README |
 | Estratégia de fallback | — | SAD §4 |
 | Campo/cabeçalho de degradação | — | SAD §4 e README |
+| Hospedagem | — | SAD §5 |
 
 ---
 
-## Fase 4 — PoC (um mecanismo por vez, com teste junto)
+## Entrega 2 — PoC
 
-- [ ] **Timeout + circuit breaker** em `internal/partner/client.go` (estado aberto **não chama** a parceira)
-  - [ ] Teste determinístico do breaker abrindo (rajada da `partner-flaky` nas sequências 49–57)
-- [ ] **Cache Redis** com chave contendo `tenant_id`
-- [ ] **Fallback** em `internal/quotation/service.go`, refletido em `internal/quotation/request.go`
-  - [ ] Teste determinístico do cache ou do fallback
-- [ ] Novos parâmetros em `internal/platform/config.go` e ligação em `cmd/quotation-api/main.go`
-- [ ] `make test` e `make smoke` verdes
-- [ ] *(Bônus, opcional)* paralelizar a agregação
+Depende da **1A**: nenhum número entra no código sem estar defendido no SAD.
 
----
+### 2A. Mecanismos (um por vez, com o teste junto)
 
-## Fase 5 — Instrumentação
+- [ ] **Timeout** em `internal/partner/client.go`
+- [ ] **Circuit breaker** em `internal/partner/` (ou pacote novo em `internal/`): três estados nomeados no código, e o estado aberto **não chama** a parceira
+- [ ] **Cache Redis** com chave contendo `tenant_id`, e política de invalidação implementada
+- [ ] **Fallback** em `internal/quotation/service.go`, refletido no `Response` de `internal/quotation/request.go`
+- [ ] Novos parâmetros em `internal/platform/config.go`, ligados em `cmd/quotation-api/main.go`
+
+### 2B. Instrumentação
 
 - [ ] Métrica de **estado/transição do breaker** por parceira
 - [ ] Métrica de **hit/miss do cache** (permite calcular o hit rate em PromQL)
@@ -129,13 +184,17 @@ Arquivo: `docs/sad.md`
 |---|---|---|
 | — | — | — |
 
----
+### 2C. Testes
 
-## Fase 6 — Evidências do "depois"
+- [ ] Teste determinístico do **breaker abrindo** (rajada da `partner-flaky` nas sequências 49–57), sem `sleep`
+- [ ] Teste determinístico do **cache ou do fallback**
+- [ ] `make test` e `make smoke` verdes, incluindo os testes originais
+
+### 2D. Evidências do "depois"
 
 Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda de uma linha**. Capturar **com o ambiente de pé**.
 
-- [ ] 1. Relatório do `make reproduce` "depois" (mesma carga) → `reproduce-depois.txt`
+- [ ] 1. Relatório do `make reproduce` "depois", com a mesma carga → `reproduce-depois.txt`
 - [ ] 2. Saída do `make test` → `make-test.txt`
 - [ ] 3. Trace com breaker aberto (export JSON do Jaeger)
 - [ ] 4. Trace servido de cache (export JSON do Jaeger)
@@ -145,25 +204,33 @@ Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda
 
 ---
 
-## Fase 7 — SAD, seções 5 a 8 (com os números medidos)
+## Fechamento
 
-- [ ] **Seção 5 — Implementação:** mecanismo → arquivo real; decisão de **hospedagem** (on-premise, cloud ou híbrido)
-- [ ] **Seção 6 — Operação:** **3 alertas** (métrica, limiar, ação), **1 runbook** completo, caminho de mudança do TTL
-- [ ] **Seção 7 — DR:** RTO/RPO por classe de dado; **3 cenários** (Redis perdido, parceira fora 6 h, perda do site/região)
-- [ ] **Seção 8 — Custos:** conta de parceiro (hoje, hit rate 0, ≥ 2 hit rates sustentados pelo TTL), infra, pessoal, payback, **custo de auditoria ano 1 e ano 5** por cotação apresentada
-- [ ] Revisar as seções 1 a 4 com o que a implementação provou
+Depende das duas entregas.
 
----
-
-## Fase 8 — Fechamento
-
-- [ ] README do processo na raiz (links, como subir, implementado × proposta, nomes de métricas/atributos, o que faria diferente, parágrafo do "coração da solução")
-- [ ] Revisão de coerência: todo caminho, biblioteca, métrica e endpoint citado **existe** ou está marcado como **proposta**
-- [ ] Revisão de coerência: TTL, limiares e nomes de métrica **iguais** no SAD e no código
-- [ ] Revisão de coerência: hit rate da §8 compatível com o TTL da §4 e o pressuposto de recotação da §1
+- [ ] **README do processo** na raiz, com as cinco coisas:
+  - [ ] links para o SAD e as evidências
+  - [ ] como subir o ambiente e reproduzir
+  - [ ] o que foi implementado e o que ficou como proposta
+  - [ ] nomes das métricas e dos atributos criados
+  - [ ] o que faria diferente com mais tempo
+  - [ ] um parágrafo com o "coração da solução": o que foi protegido, com o quê e quanto custou
+- [ ] **Coerência:** todo caminho, biblioteca, métrica e endpoint citado **existe** ou está marcado como **proposta**
+- [ ] **Coerência:** TTL, limiares e nomes de métrica **iguais** no SAD e no código
+- [ ] **Coerência:** hit rate da §8 compatível com o TTL da §4 e o pressuposto de recotação da §1
 - [ ] `docs/enunciado.md`, `docs/sad.md` e `docs/evidencias/` no lugar
 - [ ] Push da `development` e merge na `main` pelo GitHub
 - [ ] Fork **público**
+
+---
+
+## Extras (opcional)
+
+Só depois de todo o obrigatório pronto. Não conta para nenhum critério de aceite.
+
+- [ ] **Paralelizar a agregação** em `internal/quotation/service.go`, sobrepondo as três parceiras em vez de somá-las
+  - [ ] Registrar no SAD como decisão (contexto, opções, escolha, consequências), porque muda o p95
+  - [ ] Refazer as evidências de p95 se for implementado
 
 ---
 
@@ -175,4 +242,5 @@ Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda
 | 2026-10-26 | Ambiente: Go 1.25.7, Make 4.4.1, Docker Desktop, WSL 2 | — |
 | 2026-10-26 | Relatório "antes" do `make reproduce` | `4787623` |
 | 2026-10-26 | Roteiro de progresso (`docs/progresso.md`) | `1d273e4` |
-| 2026-10-26 | Regras operacionais para agentes (`AGENTS.md` + `CLAUDE.md`) | este commit |
+| 2026-10-26 | Regras operacionais para agentes (`AGENTS.md` + `CLAUDE.md`) | `87dcd6a` |
+| 2026-10-26 | Progresso dividido em Preparação, Entrega 1, Entrega 2, Fechamento e Extras | este commit |
