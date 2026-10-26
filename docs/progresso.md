@@ -32,7 +32,7 @@ Preparação
                     └─► Fechamento ─► Extras (opcional, só com o resto pronto)
 ```
 
-**Status atual:** Preparação quase concluída (falta a leitura). Próximo passo: **1A**.
+**Status atual:** Preparação concluída. Próximo passo: **1A** (as perguntas a responder estão em [notas-leitura.md §7](notas-leitura.md#7-decisões-que-a-leitura-deixou-em-aberto-para-o-1a)).
 
 ---
 
@@ -90,10 +90,13 @@ O p95 no Prometheus aparece como ~9,7 s porque é estimado pelos buckets do hist
 
 ### Entender antes de decidir
 
-- [ ] Ler [roteiro-cenario-de-falha.md](roteiro-cenario-de-falha.md)
-- [ ] Ler o código: `internal/partner/client.go`, `internal/quotation/{service,handler,request}.go`, `cmd/quotation-api/main.go`, `internal/platform/config.go`
-- [ ] Ler `cmd/partner-mock/feasibility_test.go` (molde dos testes determinísticos)
-- [ ] Ler [guia-sad.md](guia-sad.md) e [smoke-test-factibilidade.md](smoke-test-factibilidade.md)
+- [x] Ler [roteiro-cenario-de-falha.md](roteiro-cenario-de-falha.md)
+- [x] Ler o código: `internal/partner/client.go`, `internal/quotation/{service,handler,request}.go`, `cmd/quotation-api/main.go`, `internal/platform/config.go`
+- [x] Ler `cmd/partner-mock/feasibility_test.go` (molde dos testes determinísticos)
+- [x] Ler [guia-sad.md](guia-sad.md) e [smoke-test-factibilidade.md](smoke-test-factibilidade.md)
+- [x] Registrar o que a leitura revelou → [notas-leitura.md](notas-leitura.md)
+
+> ⚠️ **Achado da leitura:** `TestOnePartnerDownBringsDownTheWholeRequest` exige que `Service.Quote` devolva erro quando uma parceira falha. O fallback **não pode** entrar dentro de `Service.Quote` sem quebrar esse teste. Ver [notas-leitura.md §1](notas-leitura.md#1-️-dois-testes-existentes-travam-o-comportamento-atual).
 
 ---
 
@@ -248,4 +251,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Roteiro de progresso (`docs/progresso.md`) | `1d273e4` |
 | 2026-10-26 | Regras operacionais para agentes (`AGENTS.md` + `CLAUDE.md`) | `87dcd6a` |
 | 2026-10-26 | Progresso dividido em Preparação, Entrega 1, Entrega 2, Fechamento e Extras | `2ecbe3c` |
-| 2026-10-26 | Capturas do "antes": p95 no Prometheus e dois traces do Jaeger | este commit |
+| 2026-10-26 | Capturas do "antes": p95 no Prometheus e dois traces do Jaeger | `1ebe588` |
+| 2026-10-26 | Leitura do código e dos documentos de apoio (`docs/notas-leitura.md`) | este commit |
