@@ -170,7 +170,7 @@ flowchart LR
 | Tipo | O que muda | Onde |
 |---|---|---|
 | **Acrescenta** | timeout por parceira | `internal/partner/client.go` e `internal/platform/config.go` |
-| **Acrescenta** | circuit breaker por parceira (gobreaker v2) | **[proposta]** `internal/partner/breaker.go` |
+| **Acrescenta** | circuit breaker por parceira (gobreaker v2) | `internal/partner/breaker.go` |
 | **Acrescenta** | cache por parceira em Redis | **[proposta]** pacote novo `internal/quotecache/` |
 | **Acrescenta** | resposta parcial e campos de degradação no contrato | `internal/quotation/service.go`, `internal/quotation/request.go`, `internal/quotation/handler.go` |
 | **Acrescenta** | métricas e marcações de trace de negócio | **[proposta]** junto do breaker e do cache |
@@ -273,7 +273,7 @@ Cada decisão está no formato **contexto → opções → escolha → consequê
 
 | Parâmetro | Valor | Defesa |
 |---|---|---|
-| **Abre quando** | **≥ 50% de falha, com no mínimo 10 requisições** contadas | Validado pelo `feasibility_test.go`: abre na requisição 10, na rajada das sequências 49 a 57, e não no ruído normal de 40% da `partner-flaky`. Por ser proporção e não ordem, resiste à concorrência: sob 34 simultâneas a rajada cai de 9 para 5 seguidas, e uma regra de "5 consecutivas" passaria a abrir só na requisição 104 (smoke §2.3). |
+| **Abre quando** | **≥ 50% de falha, com no mínimo 10 requisições** contadas | Validado pelo `feasibility_test.go`, que abre na requisição 10. Com o gobreaker, que só avalia o disparo depois de uma falha, abre na **requisição 12** (6 falhas em 12) sobre a mesma sequência da `partner-flaky`: preso pelo teste `TestBreakerOpensOnTheFlakySequenceAndStopsCallingThePartner` em `internal/partner/breaker_test.go`. Não abre no ruído normal de 40%. Por ser proporção e não ordem, resiste à concorrência: sob 34 simultâneas a rajada cai de 9 para 5 seguidas, e uma regra de "5 consecutivas" passaria a abrir só na requisição 104 (smoke §2.3). |
 | **Janela do estado fechado** (`Interval`) | **30 s** | Com o ritmo de produção do P3 (≈ 3,3 chamadas/s por parceira), 30 s juntam ≈ 100 chamadas, bem acima do mínimo de 10. Mais curta, poderia não juntar o mínimo; mais longa, falhas antigas pesariam no presente. |
 | **Tempo aberto** (`Timeout`) | **15 s** | Precisa ser maior que o intervalo de exportação de métricas (10 s, `internal/platform/telemetry.go`) para que o estado aberto apareça na série temporal. É também maior que o maior timeout (2 s): quando o meio-aberto testa, as chamadas que estavam em voo já terminaram e a `partner-degrading` já se esvaziou. Em produção (P3), 15 s aberto evitam ≈ 50 consultas pagas a uma parceira que está falhando. |
 | **Meio-aberto** (`MaxRequests`) | **2** requisições de teste; 2 sucessos fecham, 1 falha reabre | Com 40% de falha da `partner-flaky`, a chance de 2 sucessos seguidos é 36%; de 3, 21,6%. O smoke validou 2 sucessos com 6 voltas a fechado em 210 requisições, o que torna o ciclo completo observável. |
@@ -465,7 +465,7 @@ flowchart TB
     handler["API HTTP<br/><i>internal/quotation/handler.go</i><br/>valida X-Tenant-Id e corpo;<br/>escolhe 200, 400, 403 ou 503"]:::existing
     service["Agregador com fallback<br/><i>internal/quotation/service.go</i><br/>novo método [proposta]:<br/>consulta as 3, monta resposta parcial,<br/>ordena por prêmio"]:::existing
     cache["Cache de cotações<br/><i>[proposta] internal/quotecache/</i><br/>chave quote:v1:tenant:partner:hmac;<br/>fresca 1 h, vencida até 24 h"]:::proposal
-    breaker["Circuit breaker por parceira<br/><i>[proposta] internal/partner/breaker.go</i><br/>gobreaker v2 · ≥50% em ≥10 req,<br/>janela 30 s, 15 s aberto, 2 de teste"]:::proposal
+    breaker["Circuit breaker por parceira<br/><i>internal/partner/breaker.go</i><br/>gobreaker v2 · ≥50% em ≥10 req,<br/>janela 30 s, 15 s aberto, 2 de teste"]:::component
     client["Cliente de parceira<br/><i>internal/partner/client.go</i><br/>timeout por parceira:<br/>2000 / 500 / 500 ms"]:::existing
     config["Configuração<br/><i>internal/platform/config.go</i><br/>timeouts, limiares, TTL,<br/>endereço do Redis, segredo do HMAC"]:::existing
     telemetry["Telemetria<br/><i>internal/platform/telemetry.go</i><br/>MeterProvider e TracerProvider globais"]:::existing

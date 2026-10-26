@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,16 +22,35 @@ type Quote struct {
 }
 
 type Client struct {
-	http *http.Client
+	http     *http.Client
+	timeouts platform.Timeouts
 }
 
-func NewClient() *Client {
-	return &Client{http: &http.Client{Transport: platform.InstrumentTransport(http.DefaultTransport)}}
+type Option func(*Client)
+
+// WithTimeouts limita a espera por parceira (docs/sad.md §4.1). Sem ela, o cliente espera o tempo
+// que a parceira quiser, como no starter.
+func WithTimeouts(t platform.Timeouts) Option {
+	return func(c *Client) { c.timeouts = t }
+}
+
+func NewClient(opts ...Option) *Client {
+	c := &Client{http: &http.Client{Transport: platform.InstrumentTransport(http.DefaultTransport)}}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 const responseLimit = 1 << 20
 
 func (c *Client) Quote(ctx context.Context, p platform.Partner, request any) (Quote, error) {
+	if timeout := c.timeouts.For(p.Name); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
 	body, err := json.Marshal(request)
 	if err != nil {
 		return Quote{}, &Error{Partner: p.Name, Reason: fmt.Sprintf("invalid request: %v", err)}
@@ -44,7 +64,7 @@ func (c *Client) Quote(ctx context.Context, p platform.Partner, request any) (Qu
 
 	response, err := c.http.Do(req)
 	if err != nil {
-		return Quote{}, &Error{Partner: p.Name, Reason: err.Error()}
+		return Quote{}, &Error{Partner: p.Name, Reason: err.Error(), Err: err}
 	}
 	defer func() { _ = response.Body.Close() }()
 
@@ -59,7 +79,7 @@ func (c *Client) Quote(ctx context.Context, p platform.Partner, request any) (Qu
 
 	var quote Quote
 	if err := json.NewDecoder(io.LimitReader(response.Body, responseLimit)).Decode(&quote); err != nil {
-		return Quote{}, &Error{Partner: p.Name, Reason: fmt.Sprintf("unreadable response: %v", err)}
+		return Quote{}, &Error{Partner: p.Name, Reason: fmt.Sprintf("unreadable response: %v", err), Err: err}
 	}
 
 	quote.Partner = p.Name
@@ -70,8 +90,17 @@ type Error struct {
 	Partner string
 	Status  int
 	Reason  string
+	Err     error
 }
 
 func (e *Error) Error() string {
 	return fmt.Sprintf("partner %s: %s", e.Partner, e.Reason)
 }
+
+func (e *Error) Unwrap() error { return e.Err }
+
+// TimedOut diz se a parceira estourou o timeout dela (docs/sad.md §4.1): conta como falha.
+func TimedOut(err error) bool { return errors.Is(err, context.DeadlineExceeded) }
+
+// CanceledByCaller diz se quem desistiu foi a corretora, e nao a parceira: nao conta para o breaker.
+func CanceledByCaller(err error) bool { return errors.Is(err, context.Canceled) }

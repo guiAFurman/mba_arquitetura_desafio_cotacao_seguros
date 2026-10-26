@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -12,11 +14,36 @@ type Config struct {
 	Partners  []Partner
 	Tenants   []string
 	Telemetry Telemetry
+	Timeouts  Timeouts
+	Breaker   Breaker
 }
 
 type Partner struct {
 	Name    string
 	BaseURL string
+}
+
+// Timeouts guarda o teto de espera de cada parceira (docs/sad.md §4.1): latencia maxima em repouso
+// + 300 ms, arredondada para o proximo multiplo de 500 ms. Parceira sem valor proprio usa Default.
+type Timeouts struct {
+	Default   time.Duration
+	ByPartner map[string]time.Duration
+}
+
+func (t Timeouts) For(partner string) time.Duration {
+	if d, ok := t.ByPartner[partner]; ok {
+		return d
+	}
+	return t.Default
+}
+
+// Breaker sao os parametros do circuit breaker por parceira (docs/sad.md §4.2).
+type Breaker struct {
+	MinRequests      uint32
+	FailureRatio     float64
+	Interval         time.Duration
+	OpenTimeout      time.Duration
+	HalfOpenRequests uint32
 }
 
 type Telemetry struct {
@@ -35,6 +62,11 @@ const defaultCollector = "http://localhost:4317"
 
 const defaultServiceName = "quotation-api"
 
+const defaultPartnerTimeouts = "partner-slow=2s,partner-flaky=500ms,partner-degrading=500ms"
+
+// O maior dos timeouts acima: uma parceira sem valor proprio nunca espera mais que a mais lenta.
+const defaultPartnerTimeout = "2s"
+
 func LoadConfig(env func(string) string) (Config, error) {
 	cfg := Config{Port: text(env, "PORT", "8080")}
 
@@ -48,7 +80,80 @@ func LoadConfig(env func(string) string) (Config, error) {
 	if cfg.Telemetry, err = parseTelemetry(env); err != nil {
 		return Config{}, err
 	}
+	if cfg.Timeouts, err = parseTimeouts(env); err != nil {
+		return Config{}, err
+	}
+	if cfg.Breaker, err = parseBreaker(env); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+func parseTimeouts(env func(string) string) (Timeouts, error) {
+	fallback, err := positiveDuration("PARTNER_TIMEOUT_DEFAULT", text(env, "PARTNER_TIMEOUT_DEFAULT", defaultPartnerTimeout))
+	if err != nil {
+		return Timeouts{}, err
+	}
+
+	timeouts := Timeouts{Default: fallback, ByPartner: map[string]time.Duration{}}
+	for _, item := range strings.Split(text(env, "PARTNER_TIMEOUTS", defaultPartnerTimeouts), ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+
+		name, raw, found := strings.Cut(item, "=")
+		name = strings.TrimSpace(name)
+		if !found || name == "" {
+			return Timeouts{}, fmt.Errorf("PARTNER_TIMEOUTS: %q is not in the name=duration format", item)
+		}
+		d, err := positiveDuration("PARTNER_TIMEOUTS", strings.TrimSpace(raw))
+		if err != nil {
+			return Timeouts{}, err
+		}
+		timeouts.ByPartner[name] = d
+	}
+	return timeouts, nil
+}
+
+func parseBreaker(env func(string) string) (Breaker, error) {
+	var b Breaker
+	var err error
+
+	if b.MinRequests, err = positiveCount("BREAKER_MIN_REQUESTS", text(env, "BREAKER_MIN_REQUESTS", "10")); err != nil {
+		return Breaker{}, err
+	}
+	if b.HalfOpenRequests, err = positiveCount("BREAKER_HALF_OPEN_REQUESTS", text(env, "BREAKER_HALF_OPEN_REQUESTS", "2")); err != nil {
+		return Breaker{}, err
+	}
+	if b.Interval, err = positiveDuration("BREAKER_INTERVAL", text(env, "BREAKER_INTERVAL", "30s")); err != nil {
+		return Breaker{}, err
+	}
+	if b.OpenTimeout, err = positiveDuration("BREAKER_OPEN_TIMEOUT", text(env, "BREAKER_OPEN_TIMEOUT", "15s")); err != nil {
+		return Breaker{}, err
+	}
+
+	raw := text(env, "BREAKER_FAILURE_RATIO", "0.5")
+	if b.FailureRatio, err = strconv.ParseFloat(strings.TrimSpace(raw), 64); err != nil || b.FailureRatio <= 0 || b.FailureRatio > 1 {
+		return Breaker{}, fmt.Errorf("BREAKER_FAILURE_RATIO: %q is not a ratio between 0 (exclusive) and 1", raw)
+	}
+	return b, nil
+}
+
+func positiveDuration(key, raw string) (time.Duration, error) {
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("%s: %q is not a positive duration (e.g. 500ms, 2s)", key, raw)
+	}
+	return d, nil
+}
+
+func positiveCount(key, raw string) (uint32, error) {
+	n, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 32)
+	if err != nil || n == 0 {
+		return 0, fmt.Errorf("%s: %q is not a positive integer", key, raw)
+	}
+	return uint32(n), nil
 }
 
 func parseTelemetry(env func(string) string) (Telemetry, error) {

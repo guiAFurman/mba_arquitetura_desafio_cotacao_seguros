@@ -29,8 +29,13 @@ func main() {
 		log.Fatalf("telemetry: %v", err)
 	}
 
+	client := partner.NewClient(partner.WithTimeouts(cfg.Timeouts))
+	breakers := partner.NewBreakers(client, cfg.Partners, cfg.Breaker, func(name string, from, to partner.State) {
+		log.Printf("quotation-api: circuit of %s went from %s to %s", name, from, to)
+	})
+
 	api := quotation.NewAPI(
-		quotation.NewService(cfg.Partners, partner.NewClient()),
+		quotation.NewService(cfg.Partners, breakers),
 		cfg.Tenants,
 	)
 
