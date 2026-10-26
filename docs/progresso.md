@@ -32,7 +32,7 @@ Preparação
                     └─► Fechamento ─► Extras (opcional, só com o resto pronto)
 ```
 
-**Status atual:** Preparação quase concluída (faltam as capturas do "antes" e a leitura). Próximo passo: **1A**.
+**Status atual:** Preparação quase concluída (falta a leitura). Próximo passo: **1A**.
 
 ---
 
@@ -71,8 +71,10 @@ Depois, reiniciar em **Iniciar → Energia → Reiniciar** (não "Desligar"). Ob
 ### Reproduzir o "antes"
 
 - [x] `make down && make reproduce` no código original → [evidencias/reproduce-antes.txt](evidencias/reproduce-antes.txt)
-- [ ] ⚠️ Gráfico do p95 do "antes" no Prometheus, **capturado com o ambiente de pé** (some no `make down`)
-- [ ] ⚠️ Trace da cascata em série no Jaeger (opcional, mas útil para a seção 2 do SAD)
+- [x] Gráfico do p95 do "antes" no Prometheus → [evidencias/p95-antes.png](evidencias/p95-antes.png)
+- [x] Trace da cascata em série → [evidencias/trace-antes-cascata-serie.json](evidencias/trace-antes-cascata-serie.json)
+- [x] Trace do tudo-ou-nada → [evidencias/trace-antes-erro-tudo-ou-nada.json](evidencias/trace-antes-erro-tudo-ou-nada.json)
+- [x] Índice com comando, artefato e legenda de cada uma → [evidencias/antes.md](evidencias/antes.md)
 
 **Números medidos (2026-10-26):**
 
@@ -83,6 +85,8 @@ Depois, reiniciar em **Iniciar → Energia → Reiniciar** (não "Desligar"). Ob
 | p95 | 2,03 s | 8,01 s |
 | Vazão | 0,5 req/s | 8,0 req/s |
 | Falhas | 5 × 502 `partner-flaky` | 80 × 502 `partner-flaky` |
+
+O p95 no Prometheus aparece como ~9,7 s porque é estimado pelos buckets do histograma (7,5 s a 10 s). Para comparar antes × depois, vale o número do relatório em texto.
 
 ### Entender antes de decidir
 
@@ -243,4 +247,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Relatório "antes" do `make reproduce` | `4787623` |
 | 2026-10-26 | Roteiro de progresso (`docs/progresso.md`) | `1d273e4` |
 | 2026-10-26 | Regras operacionais para agentes (`AGENTS.md` + `CLAUDE.md`) | `87dcd6a` |
-| 2026-10-26 | Progresso dividido em Preparação, Entrega 1, Entrega 2, Fechamento e Extras | este commit |
+| 2026-10-26 | Progresso dividido em Preparação, Entrega 1, Entrega 2, Fechamento e Extras | `2ecbe3c` |
+| 2026-10-26 | Capturas do "antes": p95 no Prometheus e dois traces do Jaeger | este commit |
