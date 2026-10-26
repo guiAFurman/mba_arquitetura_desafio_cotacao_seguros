@@ -174,3 +174,5 @@ Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda
 | 2026-10-26 | Enunciado formatado em `docs/enunciado.md` | `5f98f8c` |
 | 2026-10-26 | Ambiente: Go 1.25.7, Make 4.4.1, Docker Desktop, WSL 2 | — |
 | 2026-10-26 | Relatório "antes" do `make reproduce` | `4787623` |
+| 2026-10-26 | Roteiro de progresso (`docs/progresso.md`) | `1d273e4` |
+| 2026-10-26 | Regras operacionais para agentes (`AGENTS.md` + `CLAUDE.md`) | este commit |
