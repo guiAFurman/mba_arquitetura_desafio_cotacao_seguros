@@ -12,10 +12,13 @@ import (
 
 // Metricas de negocio da fronteira com as parceiras (docs/sad.md §4.5). Atributos: so o nome da
 // parceira, a origem e o destino da transicao e o resultado. Nunca CPF, placa ou quote_id.
+//
+// O nome no Prometheus e o que o Collector gera a partir do nome OTel (pontos viram _, contador
+// ganha _total, segundos ganham _seconds), e e o nome declarado no README do processo.
 const (
-	MetricBreakerState       = "partner.breaker.state"
-	MetricBreakerTransitions = "partner.breaker.transitions"
-	MetricQuoteDuration      = "partner.quote.duration"
+	MetricBreakerState       = "partner.breaker.state"       // Prometheus: partner_breaker_state
+	MetricBreakerTransitions = "partner.breaker.transitions" // Prometheus: partner_breaker_transitions_total
+	MetricQuoteDuration      = "partner.quote.duration"      // Prometheus: partner_quote_duration_seconds
 )
 
 const (

@@ -15,7 +15,9 @@ import (
 
 // Instrumentacao de negocio do agregador (docs/sad.md §4.5). Atributos permitidos: corretora,
 // parceira, origem da cotacao, resultado do cache e estado do circuito. Nunca CPF, placa ou quote_id.
-const MetricCacheLookups = "quote.cache.lookups"
+//
+// O nome no Prometheus e o que o Collector gera a partir do nome OTel, e e o declarado no README.
+const MetricCacheLookups = "quote.cache.lookups" // Prometheus: quote_cache_lookups_total
 
 // Resultado de cada consulta ao cache, por parceira. O hit rate e hit / todas.
 const (

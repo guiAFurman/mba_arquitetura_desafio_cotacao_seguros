@@ -137,6 +137,7 @@ Depende da Entrega 2 (2D).
 
 - [ ] **§5 Implementação:** mecanismo → arquivo real; decisão de **hospedagem** (on-premise, cloud ou híbrido) no formato de decisão
 - [ ] **§6 Operação e mudanças:**
+  - [ ] Para cada métrica e atributo criados no 2B, **quem olha e para quê** (o enunciado: "a seção 6 do seu SAD vai ter que explicar quem olha aquilo")
   - [ ] **3 alertas** (métrica, limiar, ação)
   - [ ] **1 runbook** completo, do sintoma ao escalonamento
   - [ ] Caminho de mudança do TTL
@@ -232,6 +233,7 @@ Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda
 - [ ] 5. Gráfico do estado do breaker no tempo + PromQL + janela
 - [ ] 6. Gráfico do hit rate do cache + PromQL + janela
 - [ ] 7. Gráficos do p95 do `POST /quotes`, "antes" e "depois", + PromQL + janela
+- [ ] Extra: busca por CPF, placa e `quote_id` nas traces exportadas do Jaeger e nos rótulos do Prometheus da execução do "depois" (comando + resultado), que o SAD §4.5 cita
 
 ---
 
@@ -247,7 +249,7 @@ Depende das duas entregas.
   - [ ] **a chave do cache por extenso** (o enunciado exige no SAD **e** no README)
   - [ ] **o contrato da resposta degradada** (`degraded`, `missing_partners`, `source`, `age_seconds`, `stale`) e o **503 novo** (`no partner insurer available`): o enunciado manda documentar a mudança de contrato no README
   - [ ] as variáveis de configuração novas (`PARTNER_TIMEOUTS`, `BREAKER_*`, `REDIS_*`, `CACHE_*`) e que `Service.Quote`/`NewAPI` sem `WithFallback()` mantêm o comportamento original por causa dos testes originais
-  - [ ] nomes das métricas e dos atributos criados
+  - [ ] nomes das métricas e dos atributos criados, com **os dois nomes** de cada métrica (o do código, `partner.breaker.state`, e o do Prometheus, `partner_breaker_state`): o avaliador procura o nome declarado no repositório, e o nome do Prometheus está nos comentários das constantes em `internal/partner/metrics.go` e `internal/quotation/telemetry.go`
   - [ ] o que faria diferente com mais tempo
   - [ ] um parágrafo com o "coração da solução": o que foi protegido, com o quê e quanto custou
 - [ ] **Coerência:** todo caminho, biblioteca, métrica e endpoint citado **existe** ou está marcado como **proposta**
@@ -288,4 +290,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Revisão do 2A contra o enunciado: `http.Client.Timeout` deixa de ser zero; achado o teste do handler que exige 502 (SAD D9 atualizado) | `93c4aa0` |
 | 2026-10-26 | 2A concluído: cache Redis por parceira, resposta parcial e contrato de degradação, com testes; Redis ligado no compose | `431315f` |
 | 2026-10-26 | Revisão do 2A: corrigido o custo do Redis fora (5 tentativas de conexão, ~430 ms por operação → 1 tentativa e teto real de 100 ms; sem gravação depois de leitura falha); RF do SAD citam os testes pelo nome | `173116b` |
-| 2026-10-26 | 2B: 4 métricas de negócio e 2 marcações no trace, com testes de emissão; nomes conferidos no Prometheus e no Jaeger; SAD §4.5 com os nomes reais | este commit |
+| 2026-10-26 | 2B: 4 métricas de negócio e 2 marcações no trace, com testes de emissão; nomes conferidos no Prometheus e no Jaeger; SAD §4.5 com os nomes reais | `2f34508` |
+| 2026-10-26 | Revisão do 2B: nomes do Prometheus no código (busca estática), afirmação sem evidência tirada do SAD §4.5, itens de §6, 2D e README | este commit |

@@ -451,7 +451,7 @@ A instrumentação é o método de prova das decisões acima (enunciado, Entrega
 |---|---|---|---|---|
 | §4.2: o estado de cada circuito no tempo | `partner.breaker.state` | `partner_breaker_state` | gauge: 0 fechado, 1 meio-aberto, 2 aberto | `partner` |
 | §4.2: cada mudança de estado, com origem e destino | `partner.breaker.transitions` | `partner_breaker_transitions_total` | contador | `partner`, `from`, `to` |
-| §4.3 e P1: o hit rate do cache | `quote.cache.lookups` | `quote_cache_lookups_total` | contador | `partner`, `result` ∈ `hit`, `miss`, `stale`, `error` |
+| §4.3 e P1: o hit rate do cache | `quote.cache.lookups` | `quote_cache_lookups_total` | contador | `partner`, `result` ∈ `hit` (fresca servida, parceira não chamada), `miss` (nada fresco), `stale` (vencida servida na falha), `error` (Redis não respondeu) |
 | §4.1: a latência de cada parceira, com significado de domínio | `partner.quote.duration` | `partner_quote_duration_seconds` | histograma (s) | `partner`, `outcome` ∈ `success`, `timeout`, `error`, `circuit_open` |
 
 A latência por parceira é uma métrica **nova**, e não o reaproveitamento de `http_client_request_duration_seconds`, porque a de HTTP não enxerga o que não virou HTTP: com o circuito aberto não há chamada, e `outcome="circuit_open"` mostra essas requisições, que levam ~0 s. Os baldes do histograma acompanham os timeouts da §4.1 (0,5 s e 2 s) e o teto de 6 s da `partner-degrading`.
@@ -479,7 +479,7 @@ histogram_quantile(0.95, sum by (partner, le) (rate(partner_quote_duration_secon
 
 O span `POST /quotes` ainda recebe o resumo: `tenant.id`, `quote.degraded`, `quote.count`, `quote.from_cache` e `quote.missing_partners`.
 
-**Nunca** entram em atributo de span ou de métrica: CPF, placa, `quote_id` (dado pessoal e cardinalidade sem teto). O `tenant_id` entra só no span da requisição, e **não** como rótulo de métrica: o escopo do breaker é por parceira, e centenas de corretoras multiplicariam as séries. Isso é preso pelo teste `TestNoPersonalDataInMetricsOrSpans` e foi conferido nos dados reais: nenhuma das 420 traces de uma execução nem nenhum rótulo do Prometheus contém CPF, placa ou `quote_id`.
+**Nunca** entram em atributo de span ou de métrica: CPF, placa, `quote_id` (dado pessoal e cardinalidade sem teto). O `tenant_id` entra só no span da requisição, e **não** como rótulo de métrica: o escopo do breaker é por parceira, e centenas de corretoras multiplicariam as séries. Isso é preso pelo teste `TestNoPersonalDataInMetricsOrSpans` e é conferido também nos dados reais da execução do "depois", com a busca registrada nas evidências.
 
 ### 4.6 Componentes da fatia implementada (C4 nível 3)
 
