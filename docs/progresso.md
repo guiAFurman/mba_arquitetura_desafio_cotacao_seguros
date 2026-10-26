@@ -106,6 +106,9 @@ O SAD é escrito para três leitores: o **CTO** (quer a conta), **quem opera às
 
 ### 1A. Seções 1 a 4 — decidir antes de codar
 
+- [x] Estudo das opções de cada decisão, com prós, contras e problemas → [estudo-decisoes.md](estudo-decisoes.md)
+- [ ] Escolher as 10 decisões (D1 a D10) e preencher a tabela "Decisões fixadas"
+
 - [ ] **§1 Introdução:** propósito, escopo, restrições × decisões
   - [ ] **3 pressupostos** com valor, origem e consequência se falso (incluir o **pressuposto de recotação**, que gera o hit rate da §8)
 - [ ] **§2 Visão geral:**
@@ -252,4 +255,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Regras operacionais para agentes (`AGENTS.md` + `CLAUDE.md`) | `87dcd6a` |
 | 2026-10-26 | Progresso dividido em Preparação, Entrega 1, Entrega 2, Fechamento e Extras | `2ecbe3c` |
 | 2026-10-26 | Capturas do "antes": p95 no Prometheus e dois traces do Jaeger | `1ebe588` |
-| 2026-10-26 | Leitura do código e dos documentos de apoio (`docs/notas-leitura.md`) | este commit |
+| 2026-10-26 | Leitura do código e dos documentos de apoio (`docs/notas-leitura.md`) | `0f9bad3` |
+| 2026-10-26 | Estudo das opções das decisões D1 a D10 (`docs/estudo-decisoes.md`) | este commit |
