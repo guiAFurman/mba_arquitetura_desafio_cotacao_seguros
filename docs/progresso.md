@@ -32,7 +32,7 @@ Preparação
                     └─► Fechamento ─► Extras (opcional, só com o resto pronto)
 ```
 
-**Status atual:** Preparação e 1A concluídos ([sad.md](sad.md) §1 a §4). **Entrega 2 concluída** (2A mecanismos, 2B instrumentação, 2C testes, 2D evidências). Próximo passo: **1B** (SAD §5 a §8 com os números medidos).
+**Status atual:** **Entrega 1 concluída** ([sad.md](sad.md), versão 1.0, as oito seções) e **Entrega 2 concluída** (2A mecanismos, 2B instrumentação, 2C testes, 2D evidências). Próximo passo: **Fechamento** (README do processo, revisão de coerência e de tamanho, merge na `main`).
 
 ---
 
@@ -135,21 +135,25 @@ O SAD é escrito para três leitores: o **CTO** (quer a conta), **quem opera às
 
 Depende da Entrega 2 (2D).
 
-- [ ] **§5 Implementação:** mecanismo → arquivo real; decisão de **hospedagem** (on-premise, cloud ou híbrido) no formato de decisão
-- [ ] **§6 Operação e mudanças:**
-  - [ ] Para cada métrica e atributo criados no 2B, **quem olha e para quê** (o enunciado: "a seção 6 do seu SAD vai ter que explicar quem olha aquilo")
-  - [ ] ⚠️ Achado da 2D para a §6 e a §4.2: **com pouco tráfego o breaker quase não abre.** Uma cotação a cada ~3 s junta ~10 chamadas por janela de 30 s, no limite do mínimo, e a `partner-flaky` ficou abaixo de 50% (15 falhas em 40). Em produção (P3, ~100 chamadas por janela) não é problema, mas em horário de pouco movimento uma parceira ruim é chamada por mais tempo. Avaliar se vira limite conhecido ou ajuste de parâmetro (com o SAD e o código juntos)
-  - [ ] **3 alertas** (métrica, limiar, ação)
-  - [ ] **1 runbook** completo, do sintoma ao escalonamento
-  - [ ] Caminho de mudança do TTL
-- [ ] **§7 Recuperação de desastres:**
-  - [ ] RTO e RPO por classe de dado
-  - [ ] **3 cenários** (efeito no cliente, custo do modo degradado, caminho de volta): Redis perdido, parceira fora por 6 h, perda do site ou da região
-- [ ] **§8 Tecnologias, custos e pessoal:**
-  - [ ] Conta de parceiro: hoje, hit rate 0, e ≥ 2 hit rates que o TTL sustente
-  - [ ] Infraestrutura, pessoal e veredito de payback
-  - [ ] **Custo de auditoria** no ano 1 e no ano 5, por **cotação apresentada**
-- [ ] Revisar as §1–4 com o que a implementação provou
+Estudo das decisões D11 a D15, com as fontes externas: [estudo-decisoes-1b.md](estudo-decisoes-1b.md) (todas as inclinações aceitas).
+
+- [x] **§5 Implementação:** mecanismo → arquivo, biblioteca, configuração e teste; **hospedagem** (D11: nuvem pública em São Paulo, auditoria com bloqueio de escrita) no formato de decisão
+- [x] **§6 Operação e mudanças:**
+  - [x] Quem olha cada métrica e atributo criados no 2B, e para quê
+  - [x] Achado do breaker com pouco tráfego → **limite conhecido L5** (D14), sem mudar código
+  - [x] **4 alertas** (A1 a A4) com métrica, limiar e ação
+  - [x] **Runbook R1** completo ("circuito da `partner-degrading` fora de fechado há 10 min"), do sintoma ao escalonamento, com o que não fazer
+  - [x] Caminho de mudança do TTL (D15)
+- [x] **§7 Recuperação de desastres:**
+  - [x] RTO e RPO por classe de dado (D12)
+  - [x] **3 cenários** com efeito, o que degrada e o que para, custo em reais e caminho de volta: Redis perdido (R$ 576/h; o custo chega antes do colapso), parceira fora 6 h (R$ 1.728 a menos em consultas; no "antes" seriam R$ 18.000 de receita perdida), perda da região (R$ 3.000/h)
+- [x] **§8 Tecnologias, custos e pessoal:**
+  - [x] Conta de parceiro: hoje (0%), 20% e 40% (P1), com a coerência com o TTL de 1 h explicada
+  - [x] Infraestrutura (preços oficiais da AWS em São Paulo), pessoal (Levels.fyi) e veredito: payback de **0,44 a 0,94 mês**; equilíbrio em **2,3%** de hit rate
+  - [x] **Custo de auditoria** no ano 1 (R$ 42) e no ano 5 (R$ 352), por **cotação apresentada**, com o erro de unidade de 1,67×
+- [x] Revisar as §1–4: versão 1.0, D11 a D15 em §1.4, **P5 a P7** em §1.5, **§3.3 hoje × depois medido**, **L5** em §4.7
+- [x] Coerência conferida: todo caminho, link, teste, métrica e variável citados existem; os números do SAD são os padrões do `config.go`
+- [ ] ⚠️ Tamanho: ~10 mil palavras (~20 páginas) mais 4 diagramas, no limite de cima da faixa do enunciado (10 a 20). Fazer uma passada procurando enchimento no fechamento
 
 ### Decisões fixadas
 
@@ -170,7 +174,8 @@ Preencher conforme decidir na §4. O código tem que usar **exatamente** estes v
 | Estratégia de fallback | resposta parcial; 503 de negócio só se nada estiver disponível | SAD §4.4 (D8) |
 | Onde fica o fallback | novo método em `internal/quotation/service.go`; `Service.Quote` mantido | SAD §4.4 (D9) |
 | Campo/cabeçalho de degradação | `degraded` + `missing_partners` + `source`/`age_seconds` por cotação | SAD §4.4 (D10) e README |
-| Hospedagem | — | SAD §5 |
+| Hospedagem | nuvem pública, AWS `sa-east-1`; auditoria em S3 com Object Lock (proposta) | SAD §5.2 (D11) |
+| Alertas | A1 breaker fora de fechado 10 min; A2 p95 > 80% do timeout; A3 Redis fora; A4 hit rate < 20% por 1 dia | SAD §6.2 (D13) |
 
 ---
 
@@ -300,4 +305,6 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | 2B: 4 métricas de negócio e 2 marcações no trace, com testes de emissão; nomes conferidos no Prometheus e no Jaeger; SAD §4.5 com os nomes reais | `2f34508` |
 | 2026-10-26 | Revisão do 2B: nomes do Prometheus no código (busca estática), afirmação sem evidência tirada do SAD §4.5, itens de §6, 2D e README | `9689381` |
 | 2026-10-26 | 2D: as 7 evidências do "depois", mais consultas por cotação e busca de dado pessoal, numa única sessão com 3 variações declaradas | `871a645` |
-| 2026-10-26 | Revisão da 2D: evidência 3 trocada por um curto-circuito que responde rápido (0,59 ms, variação 4); limitações para o README; achado do breaker com pouco tráfego | este commit |
+| 2026-10-26 | Revisão da 2D: evidência 3 trocada por um curto-circuito que responde rápido (0,59 ms, variação 4); limitações para o README; achado do breaker com pouco tráfego | `397c940` |
+| 2026-10-26 | Estudo das decisões da 1B (D11 a D15), com preços da AWS, PTAX e salário com fonte | `5beb6d5` |
+| 2026-10-26 | 1B: SAD §5 a §8 escritos e §1 a §4 revisados com o que foi medido (SAD versão 1.0) | este commit |

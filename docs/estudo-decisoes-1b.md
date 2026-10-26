@@ -22,7 +22,7 @@ Continuação de [estudo-decisoes.md](estudo-decisoes.md). As decisões D1 a D10
 
 | # | Pressuposto | Valor | Origem | Consequência se for falso |
 |---|---|---|---|---|
-| P5 | Custo da empresa por pessoa | 1,7 × a remuneração total (R$ 35.171/mês para um sênior) | estimativa de encargos e benefícios sobre a mediana do Levels.fyi | Se for 2,0×, a operação passa de R$ 7,0 mil para R$ 8,3 mil por mês e o payback continua abaixo de 1 mês nos dois hit rates |
+| P5 | Custo da empresa por pessoa | 1,7 × a remuneração total (R$ 35.171/mês para um sênior) | estimativa de encargos e benefícios sobre a mediana do Levels.fyi | Se for 2,0×, a construção passa de R$ 52,8 mil para R$ 62,1 mil, a operação de R$ 7,0 mil para R$ 8,3 mil por mês, e o payback de 0,94 para 1,13 mês (20%) e de 0,44 para 0,53 mês (P1): o veredito não muda |
 | P6 | Tamanho do registro de auditoria | 1 KB por cotação apresentada (corretora, instante, 3 cotações com parceira, `quote_id`, prêmio, origem e idade) | estimativa pelo formato da `Response` | O custo de armazenamento é tão pequeno que nem 10× muda o veredito; muda a escolha de classe de armazenamento |
 | P7 | Corretoras ativas | 300 | enunciado: "algumas centenas em produção" | Muda só o número de objetos gravados na auditoria (lote por corretora por hora) |
 

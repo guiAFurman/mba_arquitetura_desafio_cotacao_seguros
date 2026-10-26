@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Versão** | 0.1 — seções 1 a 4 (decisões). Seções 5 a 8 entram com os números medidos do PoC. |
+| **Versão** | 1.0 — as oito seções, com os números medidos do PoC ([evidencias/depois.md](evidencias/depois.md)). |
 | **Data** | 2026-10-26 |
 | **Autor** | Guilherme A. Furmankiewicz |
 | **Base** | repositório deste fork, branch `development`; enunciado em [enunciado.md](enunciado.md) |
@@ -50,7 +50,7 @@ Ele é escrito para três leitores:
 
 ### 1.4 Decisões (escolhas deste documento, defendidas na §4)
 
-Timeout por parceira (D1), biblioteca e escopo do breaker (D2, D3), política de disparo (D4), granularidade do cache (D5), TTL e política de vencimento (D6), chave do cache (D7), estratégia de fallback (D8), onde o fallback vive no código (D9), contrato da resposta degradada (D10) e, na §5, onde a plataforma roda. O estudo completo das opções está em [estudo-decisoes.md](estudo-decisoes.md).
+Timeout por parceira (D1), biblioteca e escopo do breaker (D2, D3), política de disparo (D4), granularidade do cache (D5), TTL e política de vencimento (D6), chave do cache (D7), estratégia de fallback (D8), onde o fallback vive no código (D9), contrato da resposta degradada (D10); e, nas seções 5 a 7, onde a plataforma roda (D11), RTO e RPO por classe de dado (D12), os alertas (D13), o breaker com pouco tráfego como limite conhecido (D14) e o caminho de mudança do TTL (D15). O estudo das opções está em [estudo-decisoes.md](estudo-decisoes.md) (D1 a D10) e em [estudo-decisoes-1b.md](estudo-decisoes-1b.md) (D11 a D15).
 
 ### 1.5 Pressupostos
 
@@ -62,6 +62,9 @@ Cada pressuposto tem valor, origem e o que muda se ele for falso.
 | **P2** | **Latência das parceiras em repouso** | slow ≤ 1700 ms · flaky ≤ 200 ms · degrading ≤ 160 ms | `docker-compose.yml` e `cmd/partner-mock/behavior.go` (latência + jitter); confirmado no trace do "antes" ([evidencias/antes.md](evidencias/antes.md), evidência 3) | Os timeouts da §4.1 são derivados destes valores. Se a `partner-slow` passar de 2 s em repouso, **toda** chamada a ela estoura e o breaker dela fica aberto o tempo todo: a parceira some das respostas por decisão nossa. Os timeouts precisam ser recalibrados com o p99 real de cada parceira. |
 | **P3** | **Ritmo de produção:** 120.000 cotações por dia útil concentradas em 10 h de horário comercial | ≈ 3,3 cotações/s, ou seja ≈ 3,3 chamadas/s por parceira sem cache | Volume do enunciado ("O cenário"); a janela de 10 h é estimativa | Dimensiona a janela do breaker (§4.2): com 3,3 chamadas/s, o mínimo de 10 requisições é atingido em ≈ 3 s. Se o tráfego for muito mais espalhado (24 h), o mínimo demora mais para ser atingido e o breaker reage mais devagar. |
 | **P4** | **Validade comercial do prêmio** | 24 h | Enunciado (R8) | A cotação vencida servida no fallback (§4.3, até 24 h) passaria a ser preço não honrado. A janela de vencida teria de cair para o `valid_for_seconds` devolvido pela parceira (300 s no mock). |
+| **P5** | **Custo da empresa por pessoa** | 1,7 × a remuneração total (R$ 35.171/mês para um sênior) | Estimativa de encargos e benefícios sobre a mediana do Levels.fyi (§8.4) | Com 2,0×, o payback da §8 vai de 0,94 para 1,13 mês (20%) e de 0,44 para 0,53 mês (P1): o veredito não muda. |
+| **P6** | **Tamanho do registro de auditoria** | 1 KB por cotação apresentada | Estimativa pelo formato da `Response` (§4.4): corretora, instante e as cotações com parceira, `quote_id`, prêmio, origem e idade | O armazenamento é tão barato (R$ 352 no ano 5, §8.3) que nem 10× muda o veredito; muda a classe de armazenamento escolhida. |
+| **P7** | **Corretoras ativas** | 300 | Enunciado: "algumas centenas em produção" | Muda só o número de gravações da auditoria em lote (§8.3), que custa centavos. |
 
 ---
 
@@ -214,6 +217,20 @@ O "hoje" das linhas RNF-01, RNF-02, RNF-03 e RNF-04 foi medido com `make down &&
 | RNF-05 | Custo de uma parceira com circuito aberto | chamadas HTTP feitas a uma parceira enquanto o circuito dela está aberto | não existe breaker | **0** | trace da requisição curto-circuitada **sem** span `HTTP POST` para aquela parceira (evidência 3 da Entrega 2) | Aberto quer dizer que a chamada não sai (enunciado, Entrega 2 §1). Uma chamada feita e descartada não economiza os R$ 0,04 nem o tempo. |
 | RNF-06 | Isolamento entre corretoras | respostas servidas do cache a uma corretora diferente da que gerou a entrada | 0 (não há cache) | **0**, sempre | teste determinístico do RF-09; inspeção do formato da chave (§4.3) | R5: uma resposta cruzada é incidente de dados pessoais com dever de notificação à ANPD. Não existe tolerância. |
 | RNF-07 | Prazo máximo de guarda no cache | maior TTL restante de uma chave `quote:*` no Redis | não há cache | **≤ 86.400 s** (24 h) | `redis-cli --scan --pattern 'quote:*'` seguido de `TTL` em cada chave | P4 e LGPD: nada fica guardado além do teto comercial. O descarte é feito pelo próprio Redis, não por rotina manual. |
+
+### 3.3 Hoje e depois, medidos
+
+O "depois" foi medido com o PoC completo, com a mesma carga padrão ([evidencias/depois.md](evidencias/depois.md)).
+
+| ID | Hoje | Depois | Alvo | Atingido? | Evidência |
+|---|---|---|---|---|---|
+| RNF-01 | 8,01 s | **219 ms** | ≤ 3,0 s | sim | [reproduce-depois.txt](evidencias/reproduce-depois.txt) |
+| RNF-02 | 60% | **100%** | ≥ 99% | sim | [reproduce-depois.txt](evidencias/reproduce-depois.txt) |
+| RNF-03 | 4,36 | **0,27** nesta carga | ≤ 1,8 em produção | sim, mas o 0,27 vem de uma carga que repete 5 cotações (91% de acerto); em produção o valor esperado é o do P1, 1,8 | [consultas-depois.txt](evidencias/consultas-depois.txt) |
+| RNF-04 | 8,0 req/s | **695 req/s** | ≥ 16 req/s | sim; o laço fechado do gerador acelera quando a latência cai (roteiro §7) | [reproduce-depois.txt](evidencias/reproduce-depois.txt) |
+| RNF-05 | não existia | **0** chamadas | 0 | sim: nenhum `HTTP POST` para as parceiras curto-circuitadas | [trace-depois-breaker-aberto-rapido.json](evidencias/trace-depois-breaker-aberto-rapido.json) |
+| RNF-06 | 0 (sem cache) | **0** | 0 | sim | `TestOneBrokerNeverReceivesTheCachedQuoteOfAnother`, em [make-test.txt](evidencias/make-test.txt) |
+| RNF-07 | sem cache | **24 h** | ≤ 24 h | sim | `TestRedisKeepsTheQuoteForAtMostTheMaxAge`, em [make-test.txt](evidencias/make-test.txt) |
 
 ---
 
@@ -547,22 +564,205 @@ O que esta arquitetura **não** resolve. Nenhum destes é para implementar; decl
 | **L3** | **O TTL é a única forma automática de invalidar o cache.** | A seguradora muda o preço, ou uma corretora renegocia as condições comerciais, no meio da hora. | A corretora vê o preço antigo por até 1 h (fresca) e, durante uma falha da parceira, por até 24 h (vencida, mas marcada). A invalidação por corretora fica como proposta (§4.3). |
 | **L4** | **Uma corretora pode consumir a capacidade das outras.** O escopo do breaker é por parceira, e não há cota por corretora. | Uma corretora com volume alto, ou com pedidos que a parceira rejeita, gera falhas e lentidão que abrem o circuito da parceira. | **Todas** as corretoras perdem aquela parceira por 15 s a cada abertura, por causa de uma só. |
 
+Um quinto limite apareceu medindo (D14):
+
+| # | Limite | Gatilho que o expõe | Efeito na corretora |
+|---|---|---|---|
+| **L5** | **Com pouco tráfego, o breaker quase não abre.** A janela de 30 s precisa de no mínimo 10 chamadas, e a proporção de falha só é avaliada dentro dela. | Horário de pouco movimento: na 2D, uma cotação a cada ~3 s juntou ~10 chamadas por janela, e a `partner-flaky` ficou abaixo de 50% de falha (15 em 40); o circuito não abriu ([evidencias/variacao-curto-circuito-rapido.txt](evidencias/variacao-curto-circuito-rapido.txt)). Em produção (P3) cada janela junta ~100 chamadas. | Nesses horários, uma parceira ruim continua sendo chamada: a cotação sai com ela em `missing_partners` (`partner_error` ou `timeout`) e a consulta é paga, em vez de curto-circuitada. A janela deslizante (`BucketPeriod` do gobreaker v2.4.0) é a alternativa estudada e não adotada. |
+
 Mais um ponto que vale citar, e que não é código desta entrega (enunciado, "Fora de escopo"): duas requisições concorrentes da mesma corretora para o mesmo risco, uma servida de cache e outra da parceira, podem devolver **dois prêmios diferentes para o mesmo risco no mesmo minuto**, se a parceira tiver mudado o preço desde a gravação. Os dois são preços reais e rastreáveis; nenhum é inventado.
 
 ---
 
 ## 5. Implementação
 
-*A escrever na fase 1B, com o mapa de cada mecanismo para o arquivo real e a decisão de hospedagem.*
+### 5.1 Como se constrói: de cada mecanismo ao arquivo
+
+| Mecanismo (§4) | Arquivo | Biblioteca | Configuração | Teste que o prende |
+|---|---|---|---|---|
+| Timeout por parceira (D1) | `internal/partner/client.go` | `net/http` | `PARTNER_TIMEOUTS`, `PARTNER_TIMEOUT_DEFAULT` | `internal/partner/timeout_test.go` |
+| Circuit breaker por parceira (D2 a D4) | `internal/partner/breaker.go` | `github.com/sony/gobreaker/v2` v2.4.0 | `BREAKER_MIN_REQUESTS`, `BREAKER_FAILURE_RATIO`, `BREAKER_INTERVAL`, `BREAKER_OPEN_TIMEOUT`, `BREAKER_HALF_OPEN_REQUESTS` | `internal/partner/breaker_test.go` |
+| Chave do cache (D7) | `internal/quotecache/key.go` | `crypto/hmac` | `CACHE_KEY_SECRET` | `internal/quotecache/quotecache_test.go` |
+| Cache em Redis (D5, D6) | `internal/quotecache/redis.go` | `github.com/redis/go-redis/v9` v9.22.0 | `REDIS_ADDR`, `REDIS_TIMEOUT`, `CACHE_FRESH_TTL`, `CACHE_MAX_AGE` | `internal/quotecache/quotecache_test.go` (com `github.com/alicebob/miniredis/v2`) |
+| Resposta parcial e contrato (D8 a D10) | `internal/quotation/service.go`, `internal/quotation/request.go`, `internal/quotation/handler.go` | — | — | `internal/quotation/fallback_test.go` |
+| Métricas e marcações de trace (§4.5) | `internal/partner/metrics.go`, `internal/quotation/telemetry.go` | OpenTelemetry (SDK do starter) | — | `internal/partner/metrics_test.go`, `internal/quotation/telemetry_test.go` |
+| Valores padrão e validação | `internal/platform/config.go` | — | todas as acima | `internal/platform/config_resilience_test.go` |
+| Ligação de tudo | `cmd/quotation-api/main.go`, `docker-compose.yml` | — | — | `make reproduce` ([evidencias/depois.md](evidencias/depois.md)) |
+
+**Por que esta biblioteca de breaker:** expõe os três estados como constantes e o callback de transição que vira métrica sem código extra (§4.2, D2). **Por que este cliente Redis:** é o cliente oficial do Redis para Go e permite limitar cada operação pelo contexto, o que garantiu o teto de 100 ms (§4.3).
+
+**Como se testa sem depender de sorte**, no padrão do `cmd/partner-mock/feasibility_test.go`: o teste do breaker usa as 60 primeiras respostas **medidas** da `partner-flaky` (smoke §2.2) e prova que o circuito abre na requisição 12 e que, aberto, a parceira não é chamada; o do cache usa o relógio do miniredis para avançar 24 h; os do fallback usam relógio fixo e cache em memória. Nenhum usa `sleep`. A suíte inteira passa: 100 testes, 64 originais e 36 novos ([evidencias/make-test.txt](evidencias/make-test.txt)).
+
+**O que fica como proposta, sem código:** o acervo de auditoria (§4.4, fora de escopo pelo enunciado), apagar o cache por corretora (§4.3), o breaker com estado compartilhado entre réplicas (L2) e a cópia da auditoria fora da região (§7).
+
+### 5.2 Onde roda (D11)
+
+**Contexto.** O enunciado diz que "retenção, residência e segregação, não preferência" decidem onde a plataforma roda. A Prumo é operadora de dado pessoal (R5); a auditoria tem 5 anos sem regravação (R6); e o volume a guardar é pequeno: ~2,6 GB por mês de auditoria (§8).
+
+**Opções.** (a) nuvem pública na região de São Paulo; (b) on-premise; (c) híbrido, com a auditoria on-premise e o processamento na nuvem.
+
+**Escolha: (a) nuvem pública na região de São Paulo** (AWS `sa-east-1`), com:
+- a `quotation-api` em contêiner, em mais de uma zona de disponibilidade;
+- o cache em ElastiCache (Valkey, compatível com Redis), com 2 nós;
+- **[proposta]** a auditoria num bucket S3 com **Object Lock em modo *compliance*** e retenção de 5 anos: nesse modo, ninguém, nem o administrador da conta, apaga ou regrava um objeto antes do prazo; o prefixo é a corretora, para segregar e apagar por corretora quando o prazo vencer.
+
+**Defesa.** O dado pessoal fica no Brasil, sem transferência internacional (residência). O bloqueio de escrita atende ao "não regravável" da SUSEP sem hardware próprio (retenção). O prefixo por corretora e as permissões por prefixo separam as corretoras (segregação). O custo é por uso: Redis e auditoria somam ~R$ 365 por mês (§8).
+
+**Descartadas.** (b) on-premise exige investimento em servidores, armazenamento com bloqueio de escrita e datacenter para guardar ~160 GB em 5 anos, além de capacidade fixa para um tráfego que oscila. (c) híbrido põe dois ambientes para operar e um link no caminho da auditoria, sem entregar nada que o bloqueio de escrita da opção (a) não entregue.
+
+**Consequências ruins.** O preço é em dólar: o S3 Standard em São Paulo custa US$ 0,0405 por GB-mês, ~76% acima dos US$ 0,023 da região da Virgínia. Só existe uma região da AWS no Brasil: perder a região inteira exige um plano fora dela, que é o cenário (c) da §7.
+
+---
 
 ## 6. Operação e gestão de mudanças
 
-*A escrever na fase 1B, com os alertas, o runbook e o caminho de mudança do TTL.*
+### 6.1 O que se olha, e quem olha
+
+Cada métrica e atributo criados na §4.5 tem um dono. O que não tem dono não foi criado.
+
+| Sinal | Quem olha | Para quê |
+|---|---|---|
+| `partner_breaker_state` e `partner_breaker_transitions_total` | plantonista | saber qual parceira está fora e há quanto tempo (alerta A1, runbook R1) |
+| `partner_quote_duration_seconds` por `outcome` | plantonista; gestão de parceiros | ver a parceira se aproximando do timeout antes de o circuito abrir (A2); levar à seguradora o número de quando ela degrada |
+| `quote_cache_lookups_total{result="error"}` | plantonista | Redis fora (A3) |
+| `quote_cache_lookups_total` (hit rate) | dono do produto; CTO | conferir o pressuposto P1 em produção (A4) e a economia da §8 |
+| span `quote {parceira}` com `breaker.short_circuited` e `quote.source` | plantonista e suporte | explicar à corretora por que uma cotação veio sem uma parceira, ou de cache |
+| `tenant.id` no span `POST /quotes` | suporte | encontrar no Jaeger as cotações de uma corretora que reclamou |
+
+### 6.2 Alertas
+
+| # | Alerta | Métrica e limiar | Ação |
+|---|---|---|---|
+| **A1** | Parceira fora de "fechado" por 10 minutos | `min_over_time(partner_breaker_state[10m]) >= 1` | Runbook R1 |
+| **A2** | Parceira encostando no timeout | `histogram_quantile(0.95, sum by (partner, le) (rate(partner_quote_duration_seconds_bucket{outcome="success"}[10m])))` acima de 80% do timeout dela (1,6 s; 0,4 s; 0,4 s) por 10 minutos | Avisar a gestão de parceiros; se persistir, rever o timeout dela (§4.1), mudando o SAD junto |
+| **A3** | Redis fora | `sum(rate(quote_cache_lookups_total{result="error"}[5m])) > 0` por 5 minutos | Restaurar o Redis (cenário (a) da §7). As cotações continuam; o custo sobe |
+| **A4** | Hit rate abaixo do pressuposto | `sum(rate(quote_cache_lookups_total{result="hit"}[1h])) / sum(rate(quote_cache_lookups_total[1h])) < 0.20` por 1 dia | Não é incidente: é o P1 sendo desmentido. O dono do produto revê o TTL (§6.4) e a §8 |
+
+**Por que o A1 olha 10 minutos fora de "fechado", e não cada abertura:** abrir e fechar é o breaker funcionando. Na 2D, a `partner-flaky` oscilou 10 vezes entre meio-aberto e aberto em ~5 minutos antes de fechar ([evidencias/breaker-transicoes-depois.txt](evidencias/breaker-transicoes-depois.txt)); um alerta por abertura acordaria o plantonista dez vezes por nada.
+
+### 6.3 Runbook R1: "o circuito da `partner-degrading` está fora de fechado há 10 minutos"
+
+1. **Confirmar o sintoma.** No Prometheus, `partner_breaker_state{partner="partner-degrading"}`: o valor fica em 2 (aberto) ou alterna 1 e 2 (meio-aberto falhando). Em `partner_quote_duration_seconds_count{partner="partner-degrading"}`, o `outcome` que cresce diz o motivo: `timeout` (ela está lenta) ou `error` (ela está respondendo erro).
+2. **Medir o efeito na corretora.** No Jaeger, a tag `quote.missing_reason=circuit_open` mostra as cotações sem a `partner-degrading`. Elas saem com **200**, `degraded: true` e a parceira em `missing_partners`, ou com a cotação de cache marcada como `stale`. **Nenhuma corretora está sem cotação** enquanto as outras duas parceiras estiverem fechadas.
+3. **Verificar se a causa é nossa.** Se o `outcome` é `timeout`, olhar a concorrência: a `partner-degrading` afunda acima de 5 chamadas simultâneas. Um pico de tráfego nosso (por exemplo, cache frio depois de perder o Redis, L1) causa exatamente isso. Se `quote_cache_lookups_total{result="error"}` está subindo, o problema é o Redis: ir para o cenário (a) da §7.
+4. **O que fazer.** Nada no breaker: ele está protegendo a parceira e a corretora. Se a causa é nossa (Redis), restaurar o Redis. Se é da parceira, abrir chamado com a seguradora, com o horário de início e o `outcome`.
+5. **O que NÃO fazer.**
+   - Não aumentar o timeout da `partner-degrading` em produção para "fazer passar": isso aumenta as chamadas em voo e a afunda mais (§4.1), e muda um número defendido no SAD sem revisão.
+   - Não desligar o breaker nem reiniciar a API para "fechar" o circuito: o reinício zera o estado (L2) e manda tráfego cheio para uma parceira que está caindo.
+   - Não apagar o cache: as cotações vencidas são o que mantém a parceira na resposta.
+6. **Quando escalar.** Para a gestão de parceiros, se passar de **30 minutos**. Para o CTO e o dono do produto, se **duas parceiras** ficarem fora ao mesmo tempo (as cotações passam a ter uma proposta só) ou se o circuito da **`partner-slow`** abrir, porque ela nunca falha no perfil normal (P2) e a abertura indica mudança na parceira ou no nosso timeout.
+7. **Encerrar.** O incidente fecha quando `partner_breaker_state` volta a 0 e fica assim por 10 minutos; registrar o horário de início e de fim, que alimentam o custo do modo degradado (§7).
+
+### 6.4 Mudança do TTL (D15)
+
+O TTL é parâmetro de **negócio**: mexe no risco de preço vencido e no custo.
+
+| Etapa | Como |
+|---|---|
+| Quem pede | O dono do produto, com o alerta A4 ou com reclamação de preço não honrado |
+| Quem aprova | Produto (risco de preço) **e** encarregado de dados (prazo de guarda). O teto de 24 h é contratual (R8) e a própria configuração recusa um valor maior (`internal/platform/config.go`) |
+| Como chega em produção | Pull request no repositório de configuração alterando `CACHE_FRESH_TTL`, com a §4.3 do SAD alterada no mesmo pull request |
+| Como se reverte | Revertendo o pull request; o valor anterior volta no deploy seguinte |
+| Como se mede se melhorou | Hit rate (`quote_cache_lookups_total`), consultas por cotação entregue (RNF-03) e reclamações de preço não honrado, uma semana antes contra uma semana depois |
+
+O mesmo caminho vale para os limiares do breaker e os timeouts: são números defendidos na §4, e mudar o número sem mudar o SAD é exatamente a divergência entre documento e código que o projeto evita.
+
+---
 
 ## 7. Recuperação de desastres
 
-*A escrever na fase 1B, com RTO e RPO por classe de dado e os três cenários.*
+### 7.1 RTO e RPO por classe de dado (D12)
+
+| Classe de dado | RPO (quanto se pode perder) | RTO (em quanto tempo volta) | Por quê |
+|---|---|---|---|
+| Cache de cotações (Redis) | **tudo** | **0** para voltar a cotar; 15 min para voltar a ter cache | O cache é otimização: sem ele a API cota normalmente (`TestRedisDownDoesNotStopTheQuotation`). Perdê-lo custa dinheiro, não cotação |
+| Estado do breaker | **tudo** | 0 | Vive na memória (L2); cada processo reaprende em ~12 chamadas |
+| Registro de auditoria **[proposta]** | **≤ 1 min** | 4 h | Perder é infração regulatória (R6). Gravação em lote a cada minuto limita a perda; a cópia fora da região cobre a perda do site |
+| Código e configuração | 0 | 1 h | Tudo versionado no Git; reconstruir é aplicar de novo |
+| Telemetria | 1 h | 4 h | Serve para operar, não para cotar |
+
+### 7.2 Cenário (a): o Redis inteiro se perde
+
+- **O que a corretora vê:** nada no contrato. As cotações continuam saindo **200**, só que todas consultadas agora (`source: partner`), mais lentas (~2 s, a da `partner-slow`) e sem a cotação vencida para cobrir uma parceira em falha.
+- **O que degrada:** o custo e a latência. **O que para:** nada.
+- **Custo do modo degradado:** o hit rate cai do P1 (40%) para 0%, e a conta de parceiro volta de R$ 190.080 para R$ 316.800 por mês (§8): **R$ 126.720 por mês**, ou **~R$ 576 por hora** de horário comercial (22 dias × 10 h).
+- **Qual efeito chega primeiro.** O custo chega na primeira hora. O colapso da `partner-degrading` exige mais de 5 chamadas simultâneas nela. Com o P3 (~3,3 cotações por segundo) e ~0,14 s por chamada em repouso, a concorrência nela vai de ~0,3 (com 40% de acerto) para ~0,5 chamada em voo sem cache: o volume sobe 1,67×, mas fica longe de 5. O colapso só vem em pico, ou na rajada de cache frio de riscos novos (L1): aí o timeout de 500 ms corta a espera, o circuito dela abre e as cotações saem sem ela até o cache aquecer.
+- **Caminho de volta:** subir um nó novo (o ElastiCache troca o nó primário pela réplica sozinho); o cache se reconstrói com o próprio tráfego em ~1 h (o TTL fresco). Alerta A3 detecta.
+
+### 7.3 Cenário (b): uma parceira fica fora por seis horas
+
+- **O que a corretora vê:** cotações **200** com `degraded: true` e a parceira em `missing_partners` (`timeout`, `partner_error` e, depois que o circuito abre, `circuit_open`), ou com a cotação vencida dela até 24 h, marcada com `stale` e a idade.
+- **O que degrada:** a cotação tem 2 propostas em vez de 3, e a mais barata pode estar na parceira fora. **O que para:** nada.
+- **Custo do modo degradado:** em 6 h de horário comercial passam ~72.000 cotações (12.000 por hora). Com o circuito aberto, a parceira não é consultada: deixam de ser compradas ~43.200 consultas (com o P1), **R$ 1.728 a menos**. A receita, cobrada por cotação entregue, se mantém. O custo real é o de conversão, se a proposta que faltou era a que fecharia a venda: não há dado para quantificar, e está declarado como tal.
+- **Comparação com o "antes":** sem fallback, uma parceira fora derruba a cotação inteira. As mesmas 72.000 cotações virariam 502: **R$ 18.000 de receita perdida** (a R$ 0,25), mais as consultas já compradas às outras parceiras e jogadas fora.
+- **Caminho de volta:** automático. O breaker testa a parceira a cada 15 s (meio-aberto) e fecha com 2 sucessos seguidos. Alerta A1 e runbook R1 acompanham.
+
+### 7.4 Cenário (c): perda do site ou da região
+
+- **Perda de uma zona de disponibilidade:** coberta pela própria arquitetura da §5.2 (API em mais de uma zona, Redis com 2 nós). A corretora não vê; os circuitos de cada processo reaprendem (L2).
+- **Perda da região inteira:** a plataforma **para**. Na data deste documento, o provedor escolhido tem uma única região no Brasil.
+  - **O que a corretora vê:** nenhuma cotação.
+  - **Custo:** **R$ 3.000 por hora** de horário comercial em receita (12.000 cotações a R$ 0,25), ou R$ 30.000 por dia útil.
+  - **Caminho de volta [proposta]:** a auditoria é copiada continuamente para um bucket com bloqueio de escrita em outro provedor com região em São Paulo, o que mantém o RPO de auditoria em ≤ 1 min sem tirar o dado do Brasil; a infraestrutura é descrita como código, para ser recriada lá. RTO de 24 h para a plataforma voltar a cotar, com o cache vazio (cenário (a)) e os circuitos fechados.
+
+---
 
 ## 8. Tecnologias, custos e pessoal
 
-*A escrever na fase 1B, com a conta de parceiro por hit rate, a infraestrutura, o pessoal, o custo de auditoria e o veredito de payback.*
+Todos os preços são oficiais e foram consultados em 2026-10-26: AWS Price List API para `sa-east-1` (S3 publicado em 2026-10-15; ElastiCache em 2026-10-14) e câmbio de **R$ 5,0403 por US$** (média da PTAX de venda de 13/10 a 23/10/2026, série SGS 1 do Banco Central). As fontes e os pressupostos P5 a P7 estão na §1.5 e em [estudo-decisoes-1b.md](estudo-decisoes-1b.md).
+
+### 8.1 Tecnologias
+
+Go 1.25; `github.com/sony/gobreaker/v2` v2.4.0; `github.com/redis/go-redis/v9` v9.22.0; Valkey ou Redis 7 (o PoC usa `redis:7-alpine`, do compose; em produção, ElastiCache Valkey, compatível com o mesmo protocolo); OpenTelemetry, Collector, Prometheus e Jaeger, já do starter; **[proposta]** S3 com Object Lock para a auditoria.
+
+### 8.2 Conta de parceiro, por hit rate
+
+R$ 0,04 por consulta, 3 consultas por cotação, 120.000 cotações por dia útil, 22 dias úteis, receita de R$ 660.000 por mês (enunciado).
+
+| Cenário | Hit rate | Consultas por mês | Custo por mês | Economia contra hoje | % da receita |
+|---|---|---|---|---|---|
+| Hoje, sem cache | 0% | 7.920.000 | R$ 316.800 | — | 48,0% |
+| Recotação baixa | 20% | 6.336.000 | R$ 253.440 | R$ 63.360 | 38,4% |
+| **P1: 40% de recotação em 1 h** | 40% | 4.752.000 | R$ 190.080 | **R$ 126.720** | 28,8% |
+
+**Coerência com as §1 e §4.** O hit rate da linha principal é o **P1** (40% de recotação na mesma corretora em até 1 h), sustentado pelo TTL fresco de **1 h** da §4.3: uma recotação dentro da hora acerta; depois dela, não. A linha de 20% é a sensibilidade para metade do pressuposto. Não há linha acima de 40%: o TTL de 1 h não sustenta mais do que a recotação dentro da hora, e a recotação em outra corretora não acerta, porque a chave tem a corretora. **O hit rate medido nas evidências (91%) não entra aqui:** é propriedade de uma carga que repete 5 cotações.
+
+**Fica de fora, a favor da solução:** a economia do tudo-ou-nada. No "antes" medido, foram 4,36 consultas por cotação entregue, contra 3 no ideal ([evidencias/consultas-antes.txt](evidencias/consultas-antes.txt)), porque as consultas feitas antes de uma falha eram jogadas fora. Esta conta usa 3 por cotação, como o enunciado.
+
+### 8.3 Infraestrutura acrescentada
+
+| Item | Dimensionamento | Custo |
+|---|---|---|
+| Redis (ElastiCache Valkey `cache.t4g.small`, 1,37 GiB, US$ 0,0488/h, 2 nós) | ~216 mil entradas vivas (216.000 gravações por dia com o P1, guardadas por 24 h) × ~1 KB ≈ 216 MB | US$ 71,25 = **R$ 359 por mês** (com Redis OSS no lugar do Valkey, R$ 449) |
+| Auditoria **[proposta]**, armazenamento | 2,64 milhões de cotações apresentadas por mês × 1 KB (P6) = 2,64 GB por mês | ver a tabela abaixo |
+| Auditoria, gravação | lote por corretora por hora: 300 corretoras (P7) × 10 h × 22 dias = 66.000 gravações por mês, a US$ 0,007 por 1.000 | **R$ 2,33 por mês** |
+| `quotation-api`, Collector, Prometheus, Jaeger | já existem no "antes"; a instrumentação nova acrescenta 4 métricas com rótulos de baixa cardinalidade (partner, result, outcome, from, to) | sem mudança relevante |
+
+**Auditoria por cotação apresentada, ano 1 e ano 5:**
+
+| | Acervo no fim do ano | Custo de armazenamento no ano (S3 Standard, US$ 0,0405/GB-mês) | Mesmo acervo em Glacier Instant Retrieval (US$ 0,0083/GB-mês) |
+|---|---|---|---|
+| **Ano 1** | 31,7 GB | **R$ 42** | R$ 9 |
+| **Ano 5** | 158,4 GB (os cinco anos guardados juntos) | **R$ 352** | R$ 72 |
+
+A unidade é a **cotação apresentada**, não a consulta comprada: o cache derruba a consulta, mas a cotação servida de cache continua sendo apresentada a um consumidor e continua precisando de registro (R6). Quem dimensionasse pelo que sobrou de consultas compradas erraria para baixo em 1 ÷ (1 − 0,40) = **1,67×** com o P1, e o erro em reais seria maior no ano 5, com os cinco anos guardados ao mesmo tempo.
+
+### 8.4 Pessoal
+
+Custo da empresa por pessoa sênior: R$ 248.264 por ano de remuneração (mediana do Levels.fyi para engenheiro sênior no Brasil, 1.257 salários, atualizado em 2026-10-26) × 1,7 de encargos e benefícios (P5) = **R$ 35.171 por mês**.
+
+| Fase | Quem | Esforço | Custo |
+|---|---|---|---|
+| Construir | 1 desenvolvedor sênior (mecanismos, testes, instrumentação) e 1 SRE (ElastiCache, bucket com bloqueio de escrita, alertas) | 1 mês + 0,5 mês | **R$ 52.756**, uma vez |
+| Operar | SRE do time de plataforma, em fração (alertas, runbook, revisão mensal de hit rate e custo com o produto) | 0,2 pessoa | **R$ 7.034 por mês** |
+
+### 8.5 Veredito
+
+| | Hit rate de 20% | P1 (40%) |
+|---|---|---|
+| Economia de consultas por mês | R$ 63.360 | R$ 126.720 |
+| Custo mensal da solução (operação R$ 7.034 + Redis R$ 359 + auditoria ~R$ 5) | R$ 7.398 | R$ 7.398 |
+| **Economia líquida por mês** | **R$ 55.962** | **R$ 119.322** |
+| **Payback da construção (R$ 52.756)** | **0,94 mês** | **0,44 mês** |
+
+**O cache se paga, e em menos de um mês nos dois cenários.** O ponto de equilíbrio é um hit rate de **2,3%** (R$ 7.398 ÷ R$ 316.800): mesmo que o P1 esteja muito errado, a decisão se sustenta. Se o P5 for 2,0× em vez de 1,7×, a construção sobe para R$ 62.066 e a operação para R$ 8.275 por mês, e o payback passa a **1,13 mês** com 20% e **0,53 mês** com o P1: o veredito não muda. O que o número **não** mostra, e fica a favor da solução, é a receita que deixa de se perder quando uma parceira cai: no cenário (b) da §7, R$ 18.000 em 6 horas.
