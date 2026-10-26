@@ -32,7 +32,7 @@ Preparação
                     └─► Fechamento ─► Extras (opcional, só com o resto pronto)
 ```
 
-**Status atual:** Preparação concluída. Próximo passo: **1A** (as perguntas a responder estão em [notas-leitura.md §7](notas-leitura.md#7-decisões-que-a-leitura-deixou-em-aberto-para-o-1a)).
+**Status atual:** Preparação e 1A concluídos ([sad.md](sad.md) §1 a §4). Próximo passo: **2A** (mecanismos), começando por timeout + circuit breaker.
 
 ---
 
@@ -107,25 +107,28 @@ O SAD é escrito para três leitores: o **CTO** (quer a conta), **quem opera às
 ### 1A. Seções 1 a 4 — decidir antes de codar
 
 - [x] Estudo das opções de cada decisão, com prós, contras e problemas → [estudo-decisoes.md](estudo-decisoes.md)
-- [ ] Escolher as 10 decisões (D1 a D10) e preencher a tabela "Decisões fixadas"
+- [x] Escolher as 10 decisões (D1 a D10) e preencher a tabela "Decisões fixadas" (todas as inclinações do estudo foram aceitas)
 
-- [ ] **§1 Introdução:** propósito, escopo, restrições × decisões
-  - [ ] **3 pressupostos** com valor, origem e consequência se falso (incluir o **pressuposto de recotação**, que gera o hit rate da §8)
-- [ ] **§2 Visão geral:**
-  - [ ] C4 nível 1 (contexto)
-  - [ ] C4 nível 2 "antes"
-  - [ ] C4 nível 2 "depois"
-  - [ ] Delta em lista
-- [ ] **§3 Requisitos:**
-  - [ ] **6 RF** com identificador e frase testável (≥ 2 criados pela arquitetura)
-  - [ ] **5 RNF** com métrica, valor, unidade, método e origem (≥ 3 com "hoje" medido, usando os números da Preparação)
-- [ ] **§4 Detalhamento:** cada decisão no formato *contexto → opções → escolha → consequências*, com alternativa descartada e consequências ruins
-  - [ ] Decisão do **circuit breaker** (biblioteca, escopo, limiares, janela, tempo aberto, meio aberto)
-  - [ ] Decisão do **timeout** (valor e se o estouro conta como falha)
-  - [ ] Decisão do **cache** (TTL, granularidade, **chave por extenso com `tenant_id`**, invalidação, descarte LGPD, comportamento com o breaker aberto)
-  - [ ] Decisão do **fallback** (parcial, cotação anterior ou recusa) e mudança no contrato de `Response`
-  - [ ] C4 nível 3 da fatia implementada
-  - [ ] **4 limites conhecidos** com gatilho e efeito na corretora: concorrência por parceira, breaker em memória, TTL como única invalidação, corretora vizinha barulhenta
+- [x] **§1 Introdução:** propósito, escopo, restrições × decisões
+  - [x] **4 pressupostos** (P1 a P4) com valor, origem e consequência se falso; o **P1 é o de recotação** (40% em 1 h, na mesma corretora)
+- [x] **§2 Visão geral:**
+  - [x] C4 nível 1 (contexto)
+  - [x] C4 nível 2 "antes"
+  - [x] C4 nível 2 "depois"
+  - [x] Delta em lista
+- [x] **§3 Requisitos:**
+  - [x] **9 RF** (RF-05 a RF-09 criados pela arquitetura)
+  - [x] **7 RNF** (RNF-01 a RNF-04 com "hoje" medido)
+- [x] **§4 Detalhamento:** cada decisão no formato *contexto → opções → escolha → consequências*, com alternativa descartada e consequências ruins
+  - [x] Decisão do **circuit breaker** (biblioteca, escopo, limiares, janela, tempo aberto, meio aberto)
+  - [x] Decisão do **timeout** (valor e se o estouro conta como falha)
+  - [x] Decisão do **cache** (TTL, granularidade, **chave por extenso com `tenant_id`**, invalidação, descarte LGPD, comportamento com o breaker aberto)
+  - [x] Decisão do **fallback** (parcial, cotação anterior ou recusa) e mudança no contrato de `Response`
+  - [x] C4 nível 3 da fatia implementada
+  - [x] **4 limites conhecidos** com gatilho e efeito na corretora: concorrência por parceira, breaker em memória, TTL como única invalidação, corretora vizinha barulhenta
+- [x] Os 4 diagramas Mermaid validados (renderizados com Mermaid 11.4.1, sem erro)
+
+> **Pendências do SAD que dependem da Entrega 2:** os caminhos marcados **[proposta]** no SAD (`internal/partner/breaker.go`, `internal/quotecache/`, o novo método em `service.go`) e os nomes de métrica precisam existir ou ser corrigidos no SAD antes do fechamento.
 
 ### 1B. Seções 5 a 8 — fechar com os números medidos
 
@@ -151,17 +154,19 @@ Preencher conforme decidir na §4. O código tem que usar **exatamente** estes v
 
 | Parâmetro | Valor | Onde está defendido |
 |---|---|---|
-| Biblioteca de circuit breaker | — | SAD §4 |
-| Escopo do breaker | — | SAD §4 |
-| Falhas/janela para abrir | — | SAD §4 |
-| Tempo aberto | — | SAD §4 |
-| Requisições no meio aberto | — | SAD §4 |
-| Timeout do cliente | — | SAD §4 |
-| Estouro de timeout conta como falha? | — | SAD §4 |
-| TTL do cache | — | SAD §4 |
-| Chave do cache (por extenso) | — | SAD §4 e README |
-| Estratégia de fallback | — | SAD §4 |
-| Campo/cabeçalho de degradação | — | SAD §4 e README |
+| Biblioteca de circuit breaker | `github.com/sony/gobreaker/v2` | SAD §4.2 (D2) |
+| Escopo do breaker | um por parceira (3 breakers) | SAD §4.2 (D3) |
+| Falhas/janela para abrir | ≥ 50% de falha com no mínimo 10 requisições, contadores zerados a cada 30 s no estado fechado | SAD §4.2 (D4) |
+| Tempo aberto | 15 s | SAD §4.2 (D4) |
+| Requisições no meio aberto | 2 (2 sucessos fecham; 1 falha reabre) | SAD §4.2 (D4) |
+| Timeout do cliente | por parceira: slow 2000 ms · flaky 500 ms · degrading 500 ms | SAD §4.1 (D1) |
+| Estouro de timeout conta como falha? | sim; cancelamento pelo cliente não conta | SAD §4.1 (D1) |
+| Granularidade do cache | por parceira | SAD §4.3 (D5) |
+| TTL do cache | 1 h fresca; vencida servida só no fallback até 24 h; `EXPIRE` de 24 h | SAD §4.3 (D6) |
+| Chave do cache (por extenso) | `quote:v1:{tenant_id}:{partner}:{hmac_sha256(documento\|ano_nascimento\|placa\|modelo\|ano_veiculo\|valor_centavos\|cobertura)}` | SAD §4.3 (D7) e README |
+| Estratégia de fallback | resposta parcial; 503 de negócio só se nada estiver disponível | SAD §4.4 (D8) |
+| Onde fica o fallback | novo método em `internal/quotation/service.go`; `Service.Quote` mantido | SAD §4.4 (D9) |
+| Campo/cabeçalho de degradação | `degraded` + `missing_partners` + `source`/`age_seconds` por cotação | SAD §4.4 (D10) e README |
 | Hospedagem | — | SAD §5 |
 
 ---
@@ -256,4 +261,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Progresso dividido em Preparação, Entrega 1, Entrega 2, Fechamento e Extras | `2ecbe3c` |
 | 2026-10-26 | Capturas do "antes": p95 no Prometheus e dois traces do Jaeger | `1ebe588` |
 | 2026-10-26 | Leitura do código e dos documentos de apoio (`docs/notas-leitura.md`) | `0f9bad3` |
-| 2026-10-26 | Estudo das opções das decisões D1 a D10 (`docs/estudo-decisoes.md`) | este commit |
+| 2026-10-26 | Estudo das opções das decisões D1 a D10 (`docs/estudo-decisoes.md`) | `dfeaa63` |
+| 2026-10-26 | SAD §1 a §4 (`docs/sad.md`) e tabela de decisões fixadas | este commit |
