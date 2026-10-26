@@ -46,6 +46,11 @@ services:
       # escrever uma linha para ver o trace da requisicao no Jaeger. Para desligar: OTEL_SDK_DISABLED=true.
       OTEL_SERVICE_NAME: quotation-api
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      # Cache de cotacoes por parceira (docs/sad.md §4.3). Os prazos e os timeouts de parceira e do
+      # breaker usam os padroes defendidos no SAD (internal/platform/config.go). O segredo abaixo e
+      # um valor de desenvolvimento: em producao ele vem de um cofre, nunca do compose.
+      REDIS_ADDR: "redis:6379"
+      CACHE_KEY_SECRET: "dev-only-nao-usar-em-producao"
     depends_on:
       partner-slow:
         condition: service_healthy
@@ -57,6 +62,9 @@ services:
       # sozinho. Amarrar a API a saude do Collector seria dar a observabilidade o poder de derrubar
       # o que ela deveria so observar.
       otel-collector:
+        condition: service_started
+      # service_started pelo mesmo motivo: sem Redis a API cota sem cache, nao deixa de subir.
+      redis:
         condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]

@@ -171,7 +171,7 @@ flowchart LR
 |---|---|---|
 | **Acrescenta** | timeout por parceira | `internal/partner/client.go` e `internal/platform/config.go` |
 | **Acrescenta** | circuit breaker por parceira (gobreaker v2) | `internal/partner/breaker.go` |
-| **Acrescenta** | cache por parceira em Redis | **[proposta]** pacote novo `internal/quotecache/` |
+| **Acrescenta** | cache por parceira em Redis | pacote novo `internal/quotecache/` (`key.go`, `redis.go`) |
 | **Acrescenta** | resposta parcial e campos de degradação no contrato | `internal/quotation/service.go`, `internal/quotation/request.go`, `internal/quotation/handler.go` |
 | **Acrescenta** | métricas e marcações de trace de negócio | **[proposta]** junto do breaker e do cache |
 | **Muda de papel** | o `redis` deixa de ser um contêiner ocioso e passa a ser dependência da API (não obrigatória: sem ele, a API funciona sem cache) | `docker-compose.yml`, `cmd/quotation-api/main.go` |
@@ -354,7 +354,9 @@ Exemplo completo: `quote:v1:corretora-a:partner-flaky:9f2c…e41a`.
 
 **Valor da entrada:** a cotação da parceira como ela chegou (`partner`, `quote_id`, `premium_cents`, `currency`, `coverage_cents`, `valid_for_seconds`) mais `cached_at`. Não contém CPF nem placa.
 
-**Se o Redis cair:** a leitura é tratada como *miss* e a gravação é ignorada. A cotação continua funcionando, só sem cache (cenário (a) da §7).
+**Se o Redis cair:** a leitura é tratada como *miss* e a gravação é ignorada. A cotação continua funcionando, só sem cache (cenário (a) da §7). Cada operação no Redis tem teto de **100 ms** (`REDIS_TIMEOUT`), sem nova tentativa: um quinto do menor timeout de parceira (500 ms, §4.1). O cache nunca pode custar mais que a consulta que ele evita.
+
+**Como fica no código:** a chave é montada por `internal/quotecache/key.go` e o Redis é acessado por `internal/quotecache/redis.go` (`MGET` para as três parceiras de uma vez; `SET` com `EX` de 24 h). Os prazos vêm de `CACHE_FRESH_TTL` e `CACHE_MAX_AGE`, o segredo do HMAC de `CACHE_KEY_SECRET`, e `REDIS_ADDR=off` desliga o cache. Sem segredo configurado, a API sorteia um a cada início: o cache continua isolado e ilegível, mas só vale enquanto o processo viver.
 
 ### 4.4 Fallback e contrato da resposta (D8, D9, D10)
 
@@ -376,9 +378,9 @@ Na falha de uma parceira, a **política de cache** (§4.3) pode preencher o luga
 
 **Contexto.** O teste original `TestOnePartnerDownBringsDownTheWholeRequest` (`internal/quotation/service_test.go`) exige que `Service.Quote` devolva erro quando uma parceira falha, e a regra R9 proíbe quebrá-lo.
 
-**Escolha.** `Service.Quote` fica como está. Um **novo método** em `internal/quotation/service.go` **[proposta]** faz a agregação com cache e resposta parcial, e é ele que o handler passa a usar. Os testes originais continuam testando o comportamento original, que continua existindo.
+**Escolha.** `Service.Quote` fica como está. Um **novo método**, `Service.QuoteWithFallback` em `internal/quotation/service.go`, faz a agregação com cache e resposta parcial, e é ele que o handler passa a usar. Os testes originais continuam testando o comportamento original, que continua existindo.
 
-O mesmo vale para o handler: o teste original `TestQuotesResponds502WithTheNameOfThePartnerThatWentDown` (`internal/quotation/handler_test.go`) monta a API com `NewAPI` e exige **502** quando uma parceira falha. Por isso `NewAPI` mantém o comportamento original, e uma **opção nova** de `NewAPI` **[proposta]** liga o caminho com fallback. O `cmd/quotation-api/main.go` usa essa opção; os testes originais, não. Sem isso, o fallback existiria só no código e a corretora continuaria recebendo 502, que é exatamente o que o enunciado diz que "não conta".
+O mesmo vale para o handler: o teste original `TestQuotesResponds502WithTheNameOfThePartnerThatWentDown` (`internal/quotation/handler_test.go`) monta a API com `NewAPI` e exige **502** quando uma parceira falha. Por isso `NewAPI` mantém o comportamento original, e uma **opção nova**, `WithFallback()` em `internal/quotation/handler.go`, liga o caminho com fallback. O `cmd/quotation-api/main.go` usa essa opção; os testes originais, não. Sem isso, o fallback existiria só no código e a corretora continuaria recebendo 502, que é exatamente o que o enunciado diz que "não conta".
 
 **Descartadas.** Mudar `Service.Quote` e o teste viola R9. Um tipo novo em outro pacote afastaria o fallback do `service.go`, que é onde o enunciado o espera.
 
@@ -391,7 +393,7 @@ O mesmo vale para o handler: o teste original `TestQuotesResponds502WithTheNameO
 | Campo | Onde | Significado |
 |---|---|---|
 | `degraded` | resposta | `true` se alguma parceira faltou **ou** se alguma cotação é vencida |
-| `missing_partners` | resposta | lista de `{partner, reason}`; `reason` ∈ `circuit_open`, `timeout`, `partner_error` |
+| `missing_partners` | resposta | lista de `{partner, reason}`; `reason` ∈ `circuit_open`, `timeout`, `partner_error`; omitido quando nenhuma parceira faltou |
 | `source` | cada cotação | `partner` (consultada agora) ou `cache` |
 | `age_seconds` | cada cotação | idade desde a consulta original; 0 quando `source` é `partner` |
 | `stale` | cada cotação | `true` se a cotação passou de 1 h e só foi servida por causa de uma falha |
@@ -467,8 +469,8 @@ flowchart TB
 
   subgraph api["quotation-api (contêiner · Go 1.25)"]
     handler["API HTTP<br/><i>internal/quotation/handler.go</i><br/>valida X-Tenant-Id e corpo;<br/>escolhe 200, 400, 403 ou 503"]:::existing
-    service["Agregador com fallback<br/><i>internal/quotation/service.go</i><br/>novo método [proposta]:<br/>consulta as 3, monta resposta parcial,<br/>ordena por prêmio"]:::existing
-    cache["Cache de cotações<br/><i>[proposta] internal/quotecache/</i><br/>chave quote:v1:tenant:partner:hmac;<br/>fresca 1 h, vencida até 24 h"]:::proposal
+    service["Agregador com fallback<br/><i>internal/quotation/service.go</i><br/>QuoteWithFallback:<br/>consulta as 3, monta resposta parcial,<br/>ordena por prêmio"]:::existing
+    cache["Cache de cotações<br/><i>internal/quotecache/</i><br/>chave quote:v1:tenant:partner:hmac;<br/>fresca 1 h, vencida até 24 h"]:::component
     breaker["Circuit breaker por parceira<br/><i>internal/partner/breaker.go</i><br/>gobreaker v2 · ≥50% em ≥10 req,<br/>janela 30 s, 15 s aberto, 2 de teste"]:::component
     client["Cliente de parceira<br/><i>internal/partner/client.go</i><br/>timeout por parceira:<br/>2000 / 500 / 500 ms"]:::existing
     config["Configuração<br/><i>internal/platform/config.go</i><br/>timeouts, limiares, TTL,<br/>endereço do Redis, segredo do HMAC"]:::existing

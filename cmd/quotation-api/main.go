@@ -13,6 +13,7 @@ import (
 	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/partner"
 	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/platform"
 	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/quotation"
+	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/quotecache"
 )
 
 func main() {
@@ -34,9 +35,26 @@ func main() {
 		log.Printf("quotation-api: circuit of %s went from %s to %s", name, from, to)
 	})
 
+	var serviceOpts []quotation.Option
+	if cfg.Cache.RedisAddr != "" {
+		keys, generated := quotecache.NewKeyer(cfg.Cache.KeySecret)
+		if generated {
+			log.Print("quotation-api: CACHE_KEY_SECRET not set, using a random secret (the cache only lives as long as this process)")
+		}
+		store := quotecache.NewRedis(cfg.Cache.RedisAddr, cfg.Cache.RedisTimeout, cfg.Cache.MaxAge)
+		defer func() { _ = store.Close() }()
+		serviceOpts = append(serviceOpts, quotation.WithCache(store, keys, quotation.CachePolicy{
+			FreshFor: cfg.Cache.FreshFor,
+			MaxAge:   cfg.Cache.MaxAge,
+		}))
+	} else {
+		log.Print("quotation-api: cache off (REDIS_ADDR=off)")
+	}
+
 	api := quotation.NewAPI(
-		quotation.NewService(cfg.Partners, breakers),
+		quotation.NewService(cfg.Partners, breakers, serviceOpts...),
 		cfg.Tenants,
+		quotation.WithFallback(),
 	)
 
 	server := &http.Server{

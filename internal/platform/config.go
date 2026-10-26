@@ -16,6 +16,16 @@ type Config struct {
 	Telemetry Telemetry
 	Timeouts  Timeouts
 	Breaker   Breaker
+	Cache     Cache
+}
+
+// Cache sao os parametros do cache de cotacoes (docs/sad.md §4.3). Sem RedisAddr, nao ha cache.
+type Cache struct {
+	RedisAddr    string
+	RedisTimeout time.Duration
+	FreshFor     time.Duration
+	MaxAge       time.Duration
+	KeySecret    string
 }
 
 type Partner struct {
@@ -95,7 +105,39 @@ func LoadConfig(env func(string) string) (Config, error) {
 	if cfg.Breaker, err = parseBreaker(env); err != nil {
 		return Config{}, err
 	}
+	if cfg.Cache, err = parseCache(env); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+func parseCache(env func(string) string) (Cache, error) {
+	c := Cache{
+		RedisAddr: strings.TrimSpace(text(env, "REDIS_ADDR", "localhost:6379")),
+		KeySecret: env("CACHE_KEY_SECRET"),
+	}
+	if strings.EqualFold(c.RedisAddr, "off") {
+		c.RedisAddr = ""
+	}
+
+	var err error
+	if c.RedisTimeout, err = positiveDuration("REDIS_TIMEOUT", text(env, "REDIS_TIMEOUT", "100ms")); err != nil {
+		return Cache{}, err
+	}
+	if c.FreshFor, err = positiveDuration("CACHE_FRESH_TTL", text(env, "CACHE_FRESH_TTL", "1h")); err != nil {
+		return Cache{}, err
+	}
+	if c.MaxAge, err = positiveDuration("CACHE_MAX_AGE", text(env, "CACHE_MAX_AGE", "24h")); err != nil {
+		return Cache{}, err
+	}
+
+	switch {
+	case c.FreshFor > c.MaxAge:
+		return Cache{}, fmt.Errorf("CACHE_FRESH_TTL (%s) cannot be longer than CACHE_MAX_AGE (%s)", c.FreshFor, c.MaxAge)
+	case c.MaxAge > 24*time.Hour:
+		return Cache{}, fmt.Errorf("CACHE_MAX_AGE (%s) exceeds the 24h the insurers honour a premium", c.MaxAge)
+	}
+	return c, nil
 }
 
 func parseTimeouts(env func(string) string) (Timeouts, error) {

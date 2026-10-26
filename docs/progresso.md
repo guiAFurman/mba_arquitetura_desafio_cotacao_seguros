@@ -32,7 +32,7 @@ Preparação
                     └─► Fechamento ─► Extras (opcional, só com o resto pronto)
 ```
 
-**Status atual:** Preparação e 1A concluídos ([sad.md](sad.md) §1 a §4). **2A em andamento:** timeout e circuit breaker prontos; próximo passo é o **cache Redis** e depois o **fallback**.
+**Status atual:** Preparação e 1A concluídos ([sad.md](sad.md) §1 a §4). **2A concluído** (timeout, breaker, cache e fallback). Próximo passo: **2B** (instrumentação: métricas de negócio e marcações no trace).
 
 ---
 
@@ -180,14 +180,15 @@ Depende da **1A**: nenhum número entra no código sem estar defendido no SAD.
 
 - [x] **Timeout** em `internal/partner/client.go` (`WithTimeouts`: o `http.Client` deixa de ter `Timeout` zero e passa a 2 s, o maior teto; cada chamada corta no teto da sua parceira; `TimedOut` e `CanceledByCaller` classificam o erro)
 - [x] **Circuit breaker** em `internal/partner/breaker.go`: gobreaker v2.4.0, um por parceira, três estados nomeados (`StateClosed`, `StateHalfOpen`, `StateOpen`), e o estado aberto **não chama** a parceira (`ErrCircuitOpen`)
-- [ ] **Cache Redis** com chave contendo `tenant_id`, e política de invalidação implementada
-- [ ] **Fallback** em `internal/quotation/service.go`, refletido no `Response` de `internal/quotation/request.go`
-  - [ ] ⚠️ `Service.Quote` **e** `NewAPI` mantêm o comportamento original (dois testes originais exigem o 502); o fallback entra por um método novo no `Service` e uma opção nova no `NewAPI`, ligada só no `main.go`
-- [ ] Ligar o Redis no `docker-compose.yml` (só variáveis da `quotation-api`; perfis das parceiras intocados)
+- [x] **Cache Redis** em `internal/quotecache/`: chave `quote:v1:{tenant_id}:{partner}:{hmac}` (`key.go`), `MGET` e `SET` com `EX` de 24 h (`redis.go`), versão na chave, 100 ms por operação
+- [x] **Fallback** em `internal/quotation/service.go` (`QuoteWithFallback`): cotação fresca do cache → parceira pelo breaker → cotação vencida (até 24 h) → `missing_partners`; 503 de negócio quando nada está disponível
+  - [x] `Service.Quote` **e** `NewAPI` mantêm o comportamento original (os dois testes originais que exigem 502 continuam verdes); o fallback entra por `QuoteWithFallback` e `WithFallback()`, ligados só no `main.go`
+- [x] Contrato em `internal/quotation/request.go`: `degraded`, `missing_partners`, e `source`/`age_seconds`/`stale` por cotação (só campos novos)
+- [x] Redis ligado no `docker-compose.yml`: só `REDIS_ADDR`, `CACHE_KEY_SECRET` e `depends_on` da `quotation-api`; perfis das parceiras intocados
 - [x] Parâmetros de timeout e breaker em `internal/platform/config.go` (`PARTNER_TIMEOUTS`, `PARTNER_TIMEOUT_DEFAULT`, `BREAKER_*`), ligados em `cmd/quotation-api/main.go`
-- [ ] Parâmetros do cache (Redis, TTL, segredo do HMAC) em `internal/platform/config.go`
+- [x] Parâmetros do cache em `internal/platform/config.go` (`REDIS_ADDR`, `REDIS_TIMEOUT`, `CACHE_FRESH_TTL`, `CACHE_MAX_AGE`, `CACHE_KEY_SECRET`)
 
-> ⚠️ **Estado intermediário:** com o breaker ligado e o handler ainda no `Service.Quote` original (tudo-ou-nada), um circuito aberto vira **502 rápido**. Na carga padrão, o sucesso caiu para 3% (p95 2,28 s). Isso é esperado até o fallback entrar; **não serve como evidência do "depois"**.
+**Conferência ponta a ponta (não é evidência; a evidência é a 2D):** `make down && make reproduce` com o 2A completo deu **100% de sucesso** no baseline e na carga, p95 sob carga de **203 ms** (contra 8,01 s no "antes") e o circuito da `partner-flaky` abrindo. As chaves no Redis não têm CPF nem placa legíveis e têm TTL de 24 h.
 
 ### 2B. Instrumentação
 
@@ -209,7 +210,7 @@ Depende da **1A**: nenhum número entra no código sem estar defendido no SAD.
 
 - [x] Teste determinístico do **breaker abrindo**, sem `sleep`: `TestBreakerOpensOnTheFlakySequenceAndStopsCallingThePartner` usa as 60 primeiras respostas medidas da `partner-flaky` (smoke §2.2) e prova que abre na **requisição 12** e que, aberto, **não chama** a parceira. Mais 4 testes: timeout conta como falha, cancelamento não conta, 4xx não conta, breakers independentes por parceira
 - [x] Teste do timeout do cliente (`internal/partner/timeout_test.go`) e da configuração (`internal/platform/config_resilience_test.go`)
-- [ ] Teste determinístico do **cache ou do fallback**
+- [x] Testes determinísticos do **cache e do fallback** (relógio fixo, cache em memória, sem `sleep`): `internal/quotation/fallback_test.go` (11 testes, incluindo isolamento entre corretoras, vencida só na falha, nada acima de 24 h e o 503) e `internal/quotecache/quotecache_test.go` (chave e TTL de 24 h com o relógio do miniredis)
 - [ ] `make test` e `make smoke` verdes, incluindo os testes originais
 
 ### 2D. Evidências do "depois"
@@ -273,4 +274,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | SAD §1 a §4 (`docs/sad.md`) e tabela de decisões fixadas | `5513fa4` |
 | 2026-10-26 | Revisão antes do 2A: evidência das 545 consultas, gatilho do L1 corrigido, gobreaker v2.4.0 conferido na fonte | `6289ebc` |
 | 2026-10-26 | 2A: timeout por parceira e circuit breaker por parceira, com testes; SAD §4.2 corrigido (abre na requisição 12 com o gobreaker) | `83b49f4` |
-| 2026-10-26 | Revisão do 2A contra o enunciado: `http.Client.Timeout` deixa de ser zero; achado o teste do handler que exige 502 (SAD D9 atualizado) | este commit |
+| 2026-10-26 | Revisão do 2A contra o enunciado: `http.Client.Timeout` deixa de ser zero; achado o teste do handler que exige 502 (SAD D9 atualizado) | `93c4aa0` |
+| 2026-10-26 | 2A concluído: cache Redis por parceira, resposta parcial e contrato de degradação, com testes; Redis ligado no compose | este commit |

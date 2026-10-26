@@ -29,6 +29,28 @@ func TestDefaultTimeoutsAndBreakerAreTheOnesDefendedInTheSAD(t *testing.T) {
 	}
 }
 
+func TestDefaultCacheIsTheOneDefendedInTheSAD(t *testing.T) {
+	cfg, err := LoadConfig(env(nil))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	want := Cache{RedisAddr: "localhost:6379", RedisTimeout: 100 * time.Millisecond, FreshFor: time.Hour, MaxAge: 24 * time.Hour}
+	if cfg.Cache != want {
+		t.Errorf("cache %+v, want %+v (docs/sad.md §4.3)", cfg.Cache, want)
+	}
+}
+
+func TestCacheCanBeTurnedOff(t *testing.T) {
+	cfg, err := LoadConfig(env(map[string]string{"REDIS_ADDR": "off"}))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Cache.RedisAddr != "" {
+		t.Errorf("REDIS_ADDR=off left the cache pointing at %q", cfg.Cache.RedisAddr)
+	}
+}
+
 func TestTimeoutsAndBreakerReadTheEnvironment(t *testing.T) {
 	cfg, err := LoadConfig(env(map[string]string{
 		"PARTNER_TIMEOUTS":           " a=1s , b=250ms ",
@@ -64,6 +86,9 @@ func TestInvalidResilienceConfigFails(t *testing.T) {
 		"zero half-open requests":   {"BREAKER_HALF_OPEN_REQUESTS": "0"},
 		"interval not a duration":   {"BREAKER_INTERVAL": "30"},
 		"open timeout not positive": {"BREAKER_OPEN_TIMEOUT": "0s"},
+		"fresh longer than max age": {"CACHE_FRESH_TTL": "2h", "CACHE_MAX_AGE": "1h"},
+		"max age beyond 24h":        {"CACHE_MAX_AGE": "25h"},
+		"redis timeout not a time":  {"REDIS_TIMEOUT": "fast"},
 	}
 
 	for name, vars := range cases {

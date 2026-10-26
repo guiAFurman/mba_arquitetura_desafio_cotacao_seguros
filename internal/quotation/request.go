@@ -2,6 +2,7 @@ package quotation
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/partner"
@@ -56,13 +57,55 @@ func (r *Request) Normalize() error {
 	return nil
 }
 
+// riskFields sao os campos que mudam o premio, ja normalizados, na ordem da chave do cache
+// (docs/sad.md §4.3): documento, ano de nascimento, placa, modelo, ano do veiculo, valor, cobertura.
+func (r Request) riskFields() []string {
+	return []string{
+		r.Driver.Document,
+		strconv.Itoa(r.Driver.BirthYear),
+		r.Vehicle.Plate,
+		r.Vehicle.Model,
+		strconv.Itoa(r.Vehicle.Year),
+		strconv.FormatInt(r.Vehicle.ValueCents, 10),
+		r.Coverage,
+	}
+}
+
 type partnerRequest struct {
 	Broker string `json:"broker"`
 	Request
 }
 
+// Response so ganhou campos (docs/sad.md §4.4, D10): quem ignora campo novo continua funcionando.
 type Response struct {
-	TenantID  string          `json:"tenant_id"`
-	Quotes    []partner.Quote `json:"quotes"`
-	ElapsedMs int64           `json:"elapsed_ms"`
+	TenantID        string           `json:"tenant_id"`
+	Degraded        bool             `json:"degraded"`
+	Quotes          []PresentedQuote `json:"quotes"`
+	MissingPartners []MissingPartner `json:"missing_partners,omitempty"`
+	ElapsedMs       int64            `json:"elapsed_ms"`
 }
+
+// PresentedQuote e a cotacao da parceira como ela chegou, mais de onde veio e com que idade. O
+// quote_id e sempre o original da parceira, inclusive quando vem do cache (SUSEP, docs/sad.md R6).
+type PresentedQuote struct {
+	partner.Quote
+	Source     string `json:"source"`
+	AgeSeconds int64  `json:"age_seconds"`
+	Stale      bool   `json:"stale"`
+}
+
+const (
+	SourcePartner = "partner"
+	SourceCache   = "cache"
+)
+
+type MissingPartner struct {
+	Partner string `json:"partner"`
+	Reason  string `json:"reason"`
+}
+
+const (
+	ReasonCircuitOpen  = "circuit_open"
+	ReasonTimeout      = "timeout"
+	ReasonPartnerError = "partner_error"
+)
