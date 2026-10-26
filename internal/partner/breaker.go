@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/sony/gobreaker/v2"
 
@@ -33,13 +34,21 @@ type StateChange func(partner string, from, to State)
 type Breakers struct {
 	next     quoter
 	circuits map[string]*gobreaker.CircuitBreaker[Quote]
+	metrics  metrics
 }
 
 func NewBreakers(next quoter, partners []platform.Partner, cfg platform.Breaker, onChange StateChange) *Breakers {
-	b := &Breakers{next: next, circuits: make(map[string]*gobreaker.CircuitBreaker[Quote], len(partners))}
-	for _, p := range partners {
-		b.circuits[p.Name] = gobreaker.NewCircuitBreaker[Quote](settings(p.Name, cfg, onChange))
+	b := &Breakers{next: next, circuits: make(map[string]*gobreaker.CircuitBreaker[Quote], len(partners)), metrics: newMetrics()}
+	record := func(name string, from, to State) {
+		b.metrics.transition(name, from, to)
+		if onChange != nil {
+			onChange(name, from, to)
+		}
 	}
+	for _, p := range partners {
+		b.circuits[p.Name] = gobreaker.NewCircuitBreaker[Quote](settings(p.Name, cfg, record))
+	}
+	b.registerStateGauge()
 	return b
 }
 
@@ -78,10 +87,12 @@ func (b *Breakers) Quote(ctx context.Context, p platform.Partner, request any) (
 		return b.next.Quote(ctx, p, request)
 	}
 
+	start := time.Now()
 	quote, err := circuit.Execute(func() (Quote, error) { return b.next.Quote(ctx, p, request) })
 	if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
-		return Quote{}, &Error{Partner: p.Name, Reason: "circuit open", Err: fmt.Errorf("%w: %w", ErrCircuitOpen, err)}
+		err = &Error{Partner: p.Name, Reason: "circuit open", Err: fmt.Errorf("%w: %w", ErrCircuitOpen, err)}
 	}
+	b.metrics.observe(ctx, p.Name, time.Since(start).Seconds(), err)
 	return quote, err
 }
 

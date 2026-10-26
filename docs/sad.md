@@ -173,7 +173,7 @@ flowchart LR
 | **Acrescenta** | circuit breaker por parceira (gobreaker v2) | `internal/partner/breaker.go` |
 | **Acrescenta** | cache por parceira em Redis | pacote novo `internal/quotecache/` (`key.go`, `redis.go`) |
 | **Acrescenta** | resposta parcial e campos de degradação no contrato | `internal/quotation/service.go`, `internal/quotation/request.go`, `internal/quotation/handler.go` |
-| **Acrescenta** | métricas e marcações de trace de negócio | **[proposta]** junto do breaker e do cache |
+| **Acrescenta** | métricas e marcações de trace de negócio | `internal/partner/metrics.go`, `internal/quotation/telemetry.go` |
 | **Muda de papel** | o `redis` deixa de ser um contêiner ocioso e passa a ser dependência da API (não obrigatória: sem ele, a API funciona sem cache) | `docker-compose.yml`, `cmd/quotation-api/main.go` |
 | **Muda de papel** | a resposta deixa de ser tudo-ou-nada: 502 só sai do caminho antigo, que fica preservado para os testes originais | `internal/quotation/service.go` |
 | **Fica no papel** | acervo de auditoria de 5 anos | **[proposta]** — custo na §8, sem código (fora de escopo pelo enunciado) |
@@ -443,17 +443,43 @@ Os valores são ilustrativos. A ordenação por `premium_cents` crescente se man
 
 ### 4.5 O que fica observável
 
-A instrumentação é o método de prova das decisões acima (enunciado, Entrega 2 §4). Nomes de métrica e atributos são definidos na implementação e declarados no README do processo; aqui fica **o que** precisa ser observável e por quê.
+A instrumentação é o método de prova das decisões acima (enunciado, Entrega 2 §4). Os nomes abaixo são os que o código emite e os que aparecem no Prometheus, conferidos com o ambiente de pé; o Collector converte o nome OTel (pontos e unidade) para o formato do Prometheus.
 
-| O que | Para provar | Atributos permitidos |
+**Métricas de negócio** (código em `internal/partner/metrics.go` e `internal/quotation/telemetry.go`):
+
+| Para provar | Nome no código (OTel) | Nome no Prometheus | Tipo | Rótulos |
+|---|---|---|---|---|
+| §4.2: o estado de cada circuito no tempo | `partner.breaker.state` | `partner_breaker_state` | gauge: 0 fechado, 1 meio-aberto, 2 aberto | `partner` |
+| §4.2: cada mudança de estado, com origem e destino | `partner.breaker.transitions` | `partner_breaker_transitions_total` | contador | `partner`, `from`, `to` |
+| §4.3 e P1: o hit rate do cache | `quote.cache.lookups` | `quote_cache_lookups_total` | contador | `partner`, `result` ∈ `hit`, `miss`, `stale`, `error` |
+| §4.1: a latência de cada parceira, com significado de domínio | `partner.quote.duration` | `partner_quote_duration_seconds` | histograma (s) | `partner`, `outcome` ∈ `success`, `timeout`, `error`, `circuit_open` |
+
+A latência por parceira é uma métrica **nova**, e não o reaproveitamento de `http_client_request_duration_seconds`, porque a de HTTP não enxerga o que não virou HTTP: com o circuito aberto não há chamada, e `outcome="circuit_open"` mostra essas requisições, que levam ~0 s. Os baldes do histograma acompanham os timeouts da §4.1 (0,5 s e 2 s) e o teto de 6 s da `partner-degrading`.
+
+Consultas que usam essas métricas:
+
+```text
+# estado do circuito de cada parceira (o degrau fechado → aberto → meio-aberto → fechado)
+partner_breaker_state
+
+# hit rate do cache nos últimos 5 minutos
+sum(rate(quote_cache_lookups_total{result="hit"}[5m])) / sum(rate(quote_cache_lookups_total[5m]))
+
+# p95 de cada parceira, só das chamadas que saíram
+histogram_quantile(0.95, sum by (partner, le) (rate(partner_quote_duration_seconds_bucket{outcome!="circuit_open"}[5m])))
+```
+
+**Marcações no trace** (código em `internal/quotation/telemetry.go`): cada parceira ganha um span `quote {parceira}`, filho do span `POST /quotes`. Quando a parceira é chamada, o `HTTP POST` dela é filho desse span; quando não é, o span fica sem filho e os atributos dizem por quê.
+
+| Marcação | Atributo no span `quote {parceira}` | Como se vê no Jaeger |
 |---|---|---|
-| Estado atual e transições do breaker, por parceira | §4.2: o degrau fechado → aberto → meio-aberto → fechado | `partner`, estado de origem e de destino |
-| *Hit*, *miss* e uso de vencida no cache, por parceira | §4.3 e P1: o hit rate em PromQL, que valida o pressuposto em produção | `partner`, resultado |
-| Latência por parceira | §4.1: quem é lenta e quem é instável | `partner` (ou `server_address`, se for reaproveitada `http_client_request_duration_seconds`) |
-| Requisição curto-circuitada, no trace | RNF-05: sem ela, a requisição aparece como uma cotação misteriosamente rápida | `partner`, estado do breaker |
-| Resposta servida de cache, no trace | RF-06: a cotação sem span de saída para a parceira | `partner`, `source` |
+| **Requisição curto-circuitada** pelo breaker (RNF-05) | `breaker.short_circuited=true`, `quote.missing_reason=circuit_open`, evento `circuit open: partner not called`, status de erro | span de ~0 ms **sem** `HTTP POST` embaixo |
+| **Resposta servida de cache** (RF-06) | `quote.source=cache`, `cache.result=hit` (ou `stale`) | span de ~0 ms **sem** `HTTP POST` embaixo |
+| Cotação consultada agora | `quote.source=partner`, `cache.result=miss` | span com o `HTTP POST` da parceira embaixo |
 
-**Nunca** entram em atributo de span ou de métrica: CPF, placa, `quote_id` (dado pessoal e cardinalidade sem teto). O `tenant_id` pode entrar onde for útil, mas **não** como rótulo das métricas do breaker, porque o escopo do breaker é por parceira.
+O span `POST /quotes` ainda recebe o resumo: `tenant.id`, `quote.degraded`, `quote.count`, `quote.from_cache` e `quote.missing_partners`.
+
+**Nunca** entram em atributo de span ou de métrica: CPF, placa, `quote_id` (dado pessoal e cardinalidade sem teto). O `tenant_id` entra só no span da requisição, e **não** como rótulo de métrica: o escopo do breaker é por parceira, e centenas de corretoras multiplicariam as séries. Isso é preso pelo teste `TestNoPersonalDataInMetricsOrSpans` e foi conferido nos dados reais: nenhuma das 420 traces de uma execução nem nenhum rótulo do Prometheus contém CPF, placa ou `quote_id`.
 
 ### 4.6 Componentes da fatia implementada (C4 nível 3)
 

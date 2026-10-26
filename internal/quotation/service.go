@@ -30,12 +30,13 @@ type CachePolicy struct {
 }
 
 type Service struct {
-	partners []platform.Partner
-	quoter   Quoter
-	cache    Cache
-	keys     *quotecache.Keyer
-	policy   CachePolicy
-	now      func() time.Time
+	partners  []platform.Partner
+	quoter    Quoter
+	cache     Cache
+	keys      *quotecache.Keyer
+	policy    CachePolicy
+	now       func() time.Time
+	telemetry telemetry
 }
 
 type Option func(*Service)
@@ -49,7 +50,7 @@ func WithClock(now func() time.Time) Option {
 }
 
 func NewService(partners []platform.Partner, quoter Quoter, opts ...Option) *Service {
-	s := &Service{partners: partners, quoter: quoter, now: time.Now}
+	s := &Service{partners: partners, quoter: quoter, now: time.Now, telemetry: newTelemetry()}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -94,32 +95,21 @@ func (e *NoPartnerError) Error() string { return "no partner insurer available" 
 func (s *Service) QuoteWithFallback(ctx context.Context, tenant string, request Request) (Response, error) {
 	start := time.Now()
 	forPartner := partnerRequest{Broker: tenant, Request: request}
-	keys, cached := s.lookup(ctx, tenant, request)
+	keys, cached, cache := s.lookup(ctx, tenant, request)
 
 	response := Response{TenantID: tenant, Quotes: make([]PresentedQuote, 0, len(s.partners))}
 	for i, p := range s.partners {
-		entry := cached[i]
-		if age, ok := s.age(entry); ok && age < s.policy.FreshFor {
-			response.Quotes = append(response.Quotes, fromCache(entry, age, false))
-			continue
-		}
-
-		quote, err := s.quoter.Quote(ctx, p, forPartner)
-		if err == nil {
-			response.Quotes = append(response.Quotes, PresentedQuote{Quote: quote, Source: SourcePartner})
-			s.save(ctx, keys, i, quote)
-			continue
-		}
-
-		if age, ok := s.age(entry); ok && age < s.policy.MaxAge {
-			response.Quotes = append(response.Quotes, fromCache(entry, age, true))
+		quote, missing := s.quotePartner(ctx, p, forPartner, keys[i], cached[i], cache)
+		if missing != nil {
+			response.MissingPartners = append(response.MissingPartners, *missing)
 			response.Degraded = true
 			continue
 		}
-		response.MissingPartners = append(response.MissingPartners, MissingPartner{Partner: p.Name, Reason: reason(err)})
-		response.Degraded = true
+		response.Quotes = append(response.Quotes, quote)
+		response.Degraded = response.Degraded || quote.Stale
 	}
 
+	markResponse(ctx, tenant, response)
 	if len(response.Quotes) == 0 {
 		return Response{}, &NoPartnerError{Missing: response.MissingPartners}
 	}
@@ -129,13 +119,60 @@ func (s *Service) QuoteWithFallback(ctx context.Context, tenant string, request 
 	return response, nil
 }
 
-func (s *Service) lookup(ctx context.Context, tenant string, request Request) ([]string, []*quotecache.Entry) {
-	cached := make([]*quotecache.Entry, len(s.partners))
-	if s.cache == nil {
-		return nil, cached
+func (s *Service) quotePartner(ctx context.Context, p platform.Partner, forPartner partnerRequest, key string, entry *quotecache.Entry, cache cacheState) (PresentedQuote, *MissingPartner) {
+	ctx, span := startPartnerSpan(ctx, p.Name)
+	defer span.End()
+
+	if age, ok := s.age(entry); ok && age < s.policy.FreshFor {
+		markServed(span, SourceCache, s.record(ctx, p.Name, cache, CacheHit))
+		return fromCache(entry, age, false), nil
 	}
 
+	quote, err := s.quoter.Quote(ctx, p, forPartner)
+	if err == nil {
+		markServed(span, SourcePartner, s.record(ctx, p.Name, cache, CacheMiss))
+		s.save(ctx, key, quote)
+		return PresentedQuote{Quote: quote, Source: SourcePartner}, nil
+	}
+
+	markShortCircuit(span, err)
+	if age, ok := s.age(entry); ok && age < s.policy.MaxAge {
+		markServed(span, SourceCache, s.record(ctx, p.Name, cache, CacheStale))
+		return fromCache(entry, age, true), nil
+	}
+
+	why := reason(err)
+	markMissing(span, why, s.record(ctx, p.Name, cache, CacheMiss))
+	return PresentedQuote{}, &MissingPartner{Partner: p.Name, Reason: why}
+}
+
+type cacheState int
+
+const (
+	cacheOff cacheState = iota
+	cacheUp
+	cacheDown
+)
+
+// record conta a consulta ao cache e devolve o resultado efetivo, que tambem vai para o span.
+func (s *Service) record(ctx context.Context, partnerName string, cache cacheState, result string) string {
+	switch cache {
+	case cacheOff:
+		return "off"
+	case cacheDown:
+		result = CacheError
+	}
+	s.telemetry.lookup(ctx, partnerName, result)
+	return result
+}
+
+func (s *Service) lookup(ctx context.Context, tenant string, request Request) ([]string, []*quotecache.Entry, cacheState) {
 	keys := make([]string, len(s.partners))
+	cached := make([]*quotecache.Entry, len(s.partners))
+	if s.cache == nil {
+		return keys, cached, cacheOff
+	}
+
 	risk := request.riskFields()
 	for i, p := range s.partners {
 		keys[i] = s.keys.Key(tenant, p.Name, risk)
@@ -145,17 +182,17 @@ func (s *Service) lookup(ctx context.Context, tenant string, request Request) ([
 	if err != nil {
 		// Sem chaves, esta cotacao tambem nao tenta gravar: o Redis fora custa uma leitura, nao quatro.
 		log.Printf("quotation: cache unavailable, quoting without it: %v", err)
-		return nil, cached
+		return make([]string, len(s.partners)), cached, cacheDown
 	}
 	copy(cached, entries)
-	return keys, cached
+	return keys, cached, cacheUp
 }
 
-func (s *Service) save(ctx context.Context, keys []string, i int, quote partner.Quote) {
-	if s.cache == nil || keys == nil {
+func (s *Service) save(ctx context.Context, key string, quote partner.Quote) {
+	if s.cache == nil || key == "" {
 		return
 	}
-	if err := s.cache.Save(ctx, keys[i], quote, s.now()); err != nil {
+	if err := s.cache.Save(ctx, key, quote, s.now()); err != nil {
 		log.Printf("quotation: cache unavailable, quote not saved: %v", err)
 	}
 }

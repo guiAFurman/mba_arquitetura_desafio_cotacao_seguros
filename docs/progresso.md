@@ -32,7 +32,7 @@ Preparação
                     └─► Fechamento ─► Extras (opcional, só com o resto pronto)
 ```
 
-**Status atual:** Preparação e 1A concluídos ([sad.md](sad.md) §1 a §4). **2A concluído** (timeout, breaker, cache e fallback). Próximo passo: **2B** (instrumentação: métricas de negócio e marcações no trace).
+**Status atual:** Preparação e 1A concluídos ([sad.md](sad.md) §1 a §4). **2A e 2B concluídos** (mecanismos e instrumentação). Os testes da 2C já foram escritos junto de cada mecanismo. Próximo passo: **2D** (evidências do "depois").
 
 ---
 
@@ -192,19 +192,27 @@ Depende da **1A**: nenhum número entra no código sem estar defendido no SAD.
 
 ### 2B. Instrumentação
 
-- [ ] Métrica de **estado/transição do breaker** por parceira
-- [ ] Métrica de **hit/miss do cache** (permite calcular o hit rate em PromQL)
-- [ ] **Latência por parceira** (nova ou reaproveitando `http_client_request_duration_seconds`, declarado)
-- [ ] Marcação no trace: **requisição curto-circuitada** pelo breaker
-- [ ] Marcação no trace: **resposta servida de cache**
-- [ ] Conferir que **nenhum CPF, placa ou `quote_id`** aparece em span ou métrica
-- [ ] Conferir no Prometheus e no Jaeger que tudo aparece
+- [x] Métrica de **estado** e de **transição** do breaker por parceira (`internal/partner/metrics.go`)
+- [x] Métrica de **hit/miss do cache** (`internal/quotation/telemetry.go`)
+- [x] **Latência por parceira**: métrica nova, com `outcome` (inclui `circuit_open`, que a métrica de HTTP não vê)
+- [x] Marcação no trace: **requisição curto-circuitada** pelo breaker
+- [x] Marcação no trace: **resposta servida de cache**
+- [x] **Nenhum CPF, placa ou `quote_id`** em span ou métrica: teste `TestNoPersonalDataInMetricsOrSpans` e conferência nos dados reais (420 traces e todos os rótulos do Prometheus)
+- [x] Conferido no Prometheus (os 5 nomes abaixo) e no Jaeger (193 traces curto-circuitadas e 220 com cotação de cache, sem `HTTP POST` embaixo)
+- [x] Testes que provam a emissão: `internal/partner/metrics_test.go` e `internal/quotation/telemetry_test.go`, com o OTel em memória (`internal/otelcheck/`)
 
-**Nomes criados** (têm que bater com o código e com o README):
+**Nomes criados** (conferidos no Prometheus; têm que bater com o código, com o SAD §4.5 e com o README):
 
-| Tipo | Nome | Atributos |
-|---|---|---|
-| — | — | — |
+| Tipo | Nome no Prometheus | Nome no código | Atributos |
+|---|---|---|---|
+| gauge (0 fechado, 1 meio-aberto, 2 aberto) | `partner_breaker_state` | `partner.breaker.state` | `partner` |
+| contador | `partner_breaker_transitions_total` | `partner.breaker.transitions` | `partner`, `from`, `to` |
+| contador | `quote_cache_lookups_total` | `quote.cache.lookups` | `partner`, `result` (`hit`, `miss`, `stale`, `error`) |
+| histograma (s) | `partner_quote_duration_seconds` | `partner.quote.duration` | `partner`, `outcome` (`success`, `timeout`, `error`, `circuit_open`) |
+| span | `quote {parceira}` | — | `partner.name`, `quote.source`, `cache.result`, `breaker.short_circuited`, `quote.missing_reason` |
+| atributos no span `POST /quotes` | — | — | `tenant.id`, `quote.degraded`, `quote.count`, `quote.from_cache`, `quote.missing_partners` |
+
+> ⚠️ **Para a 2D:** com a carga padrão, as 5 cotações já estão no cache quando o circuito da `partner-flaky` abre, então **nenhuma requisição é curto-circuitada** e o trace da evidência 3 não aparece. Com `make load ARGS="-distinct 200"` (cotações novas) apareceram 193. A evidência 3 vai precisar dessa variação **declarada**. O ciclo completo do gauge também precisa de tráfego depois da abertura: o fechado → aberto → meio-aberto já apareceu sozinho, mas o meio-aberto → fechado exige 2 sucessos.
 
 ### 2C. Testes
 
@@ -279,4 +287,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | 2A: timeout por parceira e circuit breaker por parceira, com testes; SAD §4.2 corrigido (abre na requisição 12 com o gobreaker) | `83b49f4` |
 | 2026-10-26 | Revisão do 2A contra o enunciado: `http.Client.Timeout` deixa de ser zero; achado o teste do handler que exige 502 (SAD D9 atualizado) | `93c4aa0` |
 | 2026-10-26 | 2A concluído: cache Redis por parceira, resposta parcial e contrato de degradação, com testes; Redis ligado no compose | `431315f` |
-| 2026-10-26 | Revisão do 2A: corrigido o custo do Redis fora (5 tentativas de conexão, ~430 ms por operação → 1 tentativa e teto real de 100 ms; sem gravação depois de leitura falha); RF do SAD citam os testes pelo nome | este commit |
+| 2026-10-26 | Revisão do 2A: corrigido o custo do Redis fora (5 tentativas de conexão, ~430 ms por operação → 1 tentativa e teto real de 100 ms; sem gravação depois de leitura falha); RF do SAD citam os testes pelo nome | `173116b` |
+| 2026-10-26 | 2B: 4 métricas de negócio e 2 marcações no trace, com testes de emissão; nomes conferidos no Prometheus e no Jaeger; SAD §4.5 com os nomes reais | este commit |
