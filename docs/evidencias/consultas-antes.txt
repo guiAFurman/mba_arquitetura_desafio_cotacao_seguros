@@ -1,0 +1,19 @@
+# Consultas compradas no "antes" (Prometheus, instantaneo)
+# Consultado em 2026-10-26 21:30:03 UTC sobre a execucao de reproduce-antes.txt (carga de 20:49:05 a 20:49:48 UTC).
+# Ambiente nao foi reiniciado entre a carga e esta consulta: os contadores sao acumulados desde o make reproduce.
+
+## Chamadas as parceiras, por parceira e status
+sum by (server_address, http_response_status_code) (http_client_request_duration_seconds_count)
+  {http_response_status_code="200", server_address="partner-degrading"}  125
+  {http_response_status_code="200", server_address="partner-flaky"}  125
+  {http_response_status_code="200", server_address="partner-slow"}  210
+  {http_response_status_code="503", server_address="partner-flaky"}  85
+
+## Requisicoes ao POST /quotes, por status
+sum by (http_response_status_code) (http_server_request_duration_seconds_count{http_route="/quotes"})
+  {http_response_status_code="200"}  125
+  {http_response_status_code="502"}  85
+
+## Consultas compradas por cotacao entregue (RNF-03)
+sum(http_client_request_duration_seconds_count) / sum(http_server_request_duration_seconds_count{http_route="/quotes", http_response_status_code="200"})
+  {}  4.36

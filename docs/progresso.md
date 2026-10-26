@@ -74,6 +74,7 @@ Depois, reiniciar em **Iniciar → Energia → Reiniciar** (não "Desligar"). Ob
 - [x] Gráfico do p95 do "antes" no Prometheus → [evidencias/p95-antes.png](evidencias/p95-antes.png)
 - [x] Trace da cascata em série → [evidencias/trace-antes-cascata-serie.json](evidencias/trace-antes-cascata-serie.json)
 - [x] Trace do tudo-ou-nada → [evidencias/trace-antes-erro-tudo-ou-nada.json](evidencias/trace-antes-erro-tudo-ou-nada.json)
+- [x] Consultas compradas por cotação entregue (545 para 125) → [evidencias/consultas-antes.txt](evidencias/consultas-antes.txt)
 - [x] Índice com comando, artefato e legenda de cada uma → [evidencias/antes.md](evidencias/antes.md)
 
 **Números medidos (2026-10-26):**
@@ -223,6 +224,7 @@ Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda
 
 Depende das duas entregas.
 
+- [ ] ⚠️ O `README.md` da raiz **ainda é o enunciado original**: ele é substituído pelo README do processo (o enunciado já está em `docs/enunciado.md`)
 - [ ] **README do processo** na raiz, com as cinco coisas:
   - [ ] links para o SAD e as evidências
   - [ ] como subir o ambiente e reproduzir
@@ -262,4 +264,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Capturas do "antes": p95 no Prometheus e dois traces do Jaeger | `1ebe588` |
 | 2026-10-26 | Leitura do código e dos documentos de apoio (`docs/notas-leitura.md`) | `0f9bad3` |
 | 2026-10-26 | Estudo das opções das decisões D1 a D10 (`docs/estudo-decisoes.md`) | `dfeaa63` |
-| 2026-10-26 | SAD §1 a §4 (`docs/sad.md`) e tabela de decisões fixadas | este commit |
+| 2026-10-26 | SAD §1 a §4 (`docs/sad.md`) e tabela de decisões fixadas | `5513fa4` |
+| 2026-10-26 | Revisão antes do 2A: evidência das 545 consultas, gatilho do L1 corrigido, gobreaker v2.4.0 conferido na fonte | este commit |

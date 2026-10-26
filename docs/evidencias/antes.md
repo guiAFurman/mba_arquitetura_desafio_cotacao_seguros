@@ -73,3 +73,26 @@ Medições feitas em **2026-10-26** sobre o código original (commit `5f98f8c`),
 | `HTTP POST` → partner-degrading | — | — | *não chamada* |
 
 Os dois arquivos JSON foram conferidos: não contêm CPF nem placa.
+
+---
+
+## 5. Consultas compradas por cotação entregue (Prometheus)
+
+- **Consultas (PromQL):**
+  ```text
+  sum by (server_address, http_response_status_code) (http_client_request_duration_seconds_count)
+  sum by (http_response_status_code) (http_server_request_duration_seconds_count{http_route="/quotes"})
+  sum(http_client_request_duration_seconds_count) / sum(http_server_request_duration_seconds_count{http_route="/quotes", http_response_status_code="200"})
+  ```
+- **Janela:** contadores acumulados desde o `make reproduce` desta página até a consulta, às 21:30 UTC, sem reinício do ambiente nem carga adicional.
+- **Artefato:** [consultas-antes.txt](consultas-antes.txt)
+- **Legenda:** foram compradas 545 consultas para entregar 125 cotações (4,36 por cotação, contra 3 no ideal), porque nas 85 cotações que falharam a `partner-slow` e a `partner-flaky` já tinham sido pagas.
+
+| Parceira | 200 | 503 | Total |
+|---|---|---|---|
+| `partner-slow` | 210 | — | 210 |
+| `partner-flaky` | 125 | 85 | 210 |
+| `partner-degrading` | 125 | — | 125 |
+| **Total** | | | **545** |
+
+É a base da RNF-03 do SAD.
