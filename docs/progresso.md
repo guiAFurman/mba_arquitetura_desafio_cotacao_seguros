@@ -236,6 +236,9 @@ Depende das duas entregas.
   - [ ] links para o SAD e as evidências
   - [ ] como subir o ambiente e reproduzir
   - [ ] o que foi implementado e o que ficou como proposta
+  - [ ] **a chave do cache por extenso** (o enunciado exige no SAD **e** no README)
+  - [ ] **o contrato da resposta degradada** (`degraded`, `missing_partners`, `source`, `age_seconds`, `stale`) e o **503 novo** (`no partner insurer available`): o enunciado manda documentar a mudança de contrato no README
+  - [ ] as variáveis de configuração novas (`PARTNER_TIMEOUTS`, `BREAKER_*`, `REDIS_*`, `CACHE_*`) e que `Service.Quote`/`NewAPI` sem `WithFallback()` mantêm o comportamento original por causa dos testes originais
   - [ ] nomes das métricas e dos atributos criados
   - [ ] o que faria diferente com mais tempo
   - [ ] um parágrafo com o "coração da solução": o que foi protegido, com o quê e quanto custou
@@ -275,4 +278,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Revisão antes do 2A: evidência das 545 consultas, gatilho do L1 corrigido, gobreaker v2.4.0 conferido na fonte | `6289ebc` |
 | 2026-10-26 | 2A: timeout por parceira e circuit breaker por parceira, com testes; SAD §4.2 corrigido (abre na requisição 12 com o gobreaker) | `83b49f4` |
 | 2026-10-26 | Revisão do 2A contra o enunciado: `http.Client.Timeout` deixa de ser zero; achado o teste do handler que exige 502 (SAD D9 atualizado) | `93c4aa0` |
-| 2026-10-26 | 2A concluído: cache Redis por parceira, resposta parcial e contrato de degradação, com testes; Redis ligado no compose | este commit |
+| 2026-10-26 | 2A concluído: cache Redis por parceira, resposta parcial e contrato de degradação, com testes; Redis ligado no compose | `431315f` |
+| 2026-10-26 | Revisão do 2A: corrigido o custo do Redis fora (5 tentativas de conexão, ~430 ms por operação → 1 tentativa e teto real de 100 ms; sem gravação depois de leitura falha); RF do SAD citam os testes pelo nome | este commit |

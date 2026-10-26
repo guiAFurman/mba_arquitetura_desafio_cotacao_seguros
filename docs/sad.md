@@ -192,14 +192,14 @@ Os RF-01 a RF-04 saem do contrato que já existe; os RF-05 a RF-09 são **criado
 | ID | Requisito | Origem | Como se testa |
 |---|---|---|---|
 | RF-01 | `POST /quotes` sem o cabeçalho `X-Tenant-Id` responde **400** `{"error":"X-Tenant-Id is required"}`; com corretora fora de `TENANTS`, **403** `{"error":"broker not enabled on this platform"}`. | contrato atual, `internal/quotation/handler.go` | `internal/quotation/handler_test.go` |
-| RF-02 | A resposta de sucesso lista as cotações **ordenadas por `premium_cents` crescente**, inclusive quando é degradada. | contrato atual, `internal/quotation/service.go`; enunciado, "Outras regras" | teste de serviço com prêmios fora de ordem e uma parceira ausente |
+| RF-02 | A resposta de sucesso lista as cotações **ordenadas por `premium_cents` crescente**, inclusive quando é degradada. | contrato atual, `internal/quotation/service.go`; enunciado, "Outras regras" | `TestQuoteAggregatesTheThreePartnersSortedByPremium` (original) e `TestOnePartnerDownGivesAPartialResponseInsteadOf502` (degradada), em `internal/quotation/` |
 | RF-03 | O corpo inválido responde **400** com as mensagens de `Request.Normalize()`. | contrato atual, `internal/quotation/request.go` | `internal/quotation/request_test.go` |
-| RF-04 | Toda cotação apresentada carrega a parceira, o prêmio, a corretora (`tenant_id`) e o `quote_id` **original** da parceira, inclusive quando vem do cache. | R6 (SUSEP) | teste de cache: a cotação servida tem o mesmo `quote_id` da gravada |
-| RF-05 | Quando uma parceira falha (erro, timeout ou circuito aberto) e as outras respondem, a API responde **200** com as cotações disponíveis, `"degraded": true` e a parceira ausente em `missing_partners`, com o motivo. | **nova** (D8) | teste de serviço com uma parceira falhando |
-| RF-06 | Uma cotação servida do cache vem com `"source": "cache"` e `age_seconds` (idade desde a consulta original); uma consultada agora vem com `"source": "partner"`. | **nova** (D6, D10) | teste de cache |
-| RF-07 | Com o circuito de uma parceira **aberto**, a API **não faz** a chamada HTTP a ela; a parceira aparece em `missing_partners` com o motivo `circuit_open`, ou é preenchida pela cotação vencida do cache. | **nova** (D3, D4) | teste do breaker: o servidor falso não recebe chamada com o circuito aberto |
-| RF-08 | Se nenhuma parceira responder e não houver cotação no cache, a API responde **503** `{"error":"no partner insurer available","missing_partners":[...]}`, distinto do 502 atual. | **nova** (D8) | teste de serviço com as três falhando e cache vazio |
-| RF-09 | Uma cotação gravada para uma corretora **nunca** é servida a outra, mesmo com corpo idêntico. | **nova** (D7); R5 | teste com duas corretoras e o mesmo corpo: a segunda é *miss* |
+| RF-04 | Toda cotação apresentada carrega a parceira, o prêmio, a corretora (`tenant_id`) e o `quote_id` **original** da parceira, inclusive quando vem do cache. | R6 (SUSEP) | `TestAFreshCachedQuoteDoesNotCallThePartner` e `TestASuccessfulAnswerIsSavedForTheBroker` (`internal/quotation/fallback_test.go`) |
+| RF-05 | Quando uma parceira falha (erro, timeout ou circuito aberto) e as outras respondem, a API responde **200** com as cotações disponíveis, `"degraded": true` e a parceira ausente em `missing_partners`, com o motivo. | **nova** (D8) | `TestOnePartnerDownGivesAPartialResponseInsteadOf502`, `TestTheReasonSaysWhyThePartnerIsMissing` e `TestTheAPIWithFallbackAnswers200Degraded` (`internal/quotation/fallback_test.go`) |
+| RF-06 | Uma cotação servida do cache vem com `"source": "cache"` e `age_seconds` (idade desde a consulta original); uma consultada agora vem com `"source": "partner"`. | **nova** (D6, D10) | `TestAFreshCachedQuoteDoesNotCallThePartner`, `TestAnExpiredQuoteIsOnlyServedWhenThePartnerFails` e `TestAQuoteOlderThan24hIsNeverServed` (`internal/quotation/fallback_test.go`) |
+| RF-07 | Com o circuito de uma parceira **aberto**, a API **não faz** a chamada HTTP a ela; a parceira aparece em `missing_partners` com o motivo `circuit_open`, ou é preenchida pela cotação vencida do cache. | **nova** (D3, D4) | `TestBreakerOpensOnTheFlakySequenceAndStopsCallingThePartner` (`internal/partner/breaker_test.go`): a parceira não recebe nenhuma das 20 chamadas feitas com o circuito aberto |
+| RF-08 | Se nenhuma parceira responder e não houver cotação no cache, a API responde **503** `{"error":"no partner insurer available","missing_partners":[...]}`, distinto do 502 atual. | **nova** (D8) | `TestNothingAvailableIsABusinessError` e `TestTheAPIWithFallbackAnswers503WhenNothingIsAvailable` (`internal/quotation/fallback_test.go`) |
+| RF-09 | Uma cotação gravada para uma corretora **nunca** é servida a outra, mesmo com corpo idêntico. | **nova** (D7); R5 | `TestOneBrokerNeverReceivesTheCachedQuoteOfAnother` (`internal/quotation/fallback_test.go`) e `TestTheSameRiskIsADifferentKeyForEachBroker` (`internal/quotecache/quotecache_test.go`) |
 
 ### 3.2 Não funcionais
 
@@ -354,7 +354,7 @@ Exemplo completo: `quote:v1:corretora-a:partner-flaky:9f2c…e41a`.
 
 **Valor da entrada:** a cotação da parceira como ela chegou (`partner`, `quote_id`, `premium_cents`, `currency`, `coverage_cents`, `valid_for_seconds`) mais `cached_at`. Não contém CPF nem placa.
 
-**Se o Redis cair:** a leitura é tratada como *miss* e a gravação é ignorada. A cotação continua funcionando, só sem cache (cenário (a) da §7). Cada operação no Redis tem teto de **100 ms** (`REDIS_TIMEOUT`), sem nova tentativa: um quinto do menor timeout de parceira (500 ms, §4.1). O cache nunca pode custar mais que a consulta que ele evita.
+**Se o Redis cair:** a leitura é tratada como *miss* e a gravação é ignorada. A cotação continua funcionando, só sem cache (cenário (a) da §7). Cada operação no Redis tem teto de **100 ms** (`REDIS_TIMEOUT`), sem nova tentativa: um quinto do menor timeout de parceira (500 ms, §4.1). O cache nunca pode custar mais que a consulta que ele evita. Se a leitura falhar, a mesma cotação **não tenta gravar** depois: com o Redis fora, cada cotação perde no máximo uma leitura (≤ 100 ms), e não quatro operações. Os testes `TestRedisDownIsReportedAndLooksLikeAnEmptyCache` e `TestAHungRedisCostsAtMostTheTimeout` prendem esse teto. Com as 5 tentativas de conexão padrão do cliente Redis, a mesma leitura levava ~430 ms (medido).
 
 **Como fica no código:** a chave é montada por `internal/quotecache/key.go` e o Redis é acessado por `internal/quotecache/redis.go` (`MGET` para as três parceiras de uma vez; `SET` com `EX` de 24 h). Os prazos vêm de `CACHE_FRESH_TTL` e `CACHE_MAX_AGE`, o segredo do HMAC de `CACHE_KEY_SECRET`, e `REDIS_ADDR=off` desliga o cache. Sem segredo configurado, a API sorteia um a cada início: o cache continua isolado e ilegível, mas só vale enquanto o processo viver.
 
@@ -397,6 +397,8 @@ O mesmo vale para o handler: o teste original `TestQuotesResponds502WithTheNameO
 | `source` | cada cotação | `partner` (consultada agora) ou `cache` |
 | `age_seconds` | cada cotação | idade desde a consulta original; 0 quando `source` é `partner` |
 | `stale` | cada cotação | `true` se a cotação passou de 1 h e só foi servida por causa de uma falha |
+
+Os campos que vêm da parceira (`partner`, `quote_id`, `premium_cents`, `currency`, `coverage_cents`, `valid_for_seconds`) são repassados **como a parceira os devolveu**, inclusive numa cotação de cache: a plataforma não reescreve dado de seguradora. Por isso uma cotação de cache com 50 min pode trazer `valid_for_seconds: 300`, que é a validade **técnica** que o mock declara. A validade **comercial** é de 24 h (R8, P4), e a idade real está em `age_seconds`.
 
 Exemplo de resposta degradada, com a `partner-flaky` com circuito aberto e sem cotação no cache:
 

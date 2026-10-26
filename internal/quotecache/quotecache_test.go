@@ -2,6 +2,7 @@ package quotecache
 
 import (
 	"context"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -100,11 +101,46 @@ func TestRedisDownIsReportedAndLooksLikeAnEmptyCache(t *testing.T) {
 	defer store.Close()
 	server.Close()
 
+	start := time.Now()
 	entries, err := store.Lookup(context.Background(), []string{"quote:v1:corretora-a:partner-flaky:abc"})
 	if err == nil {
 		t.Fatal("Redis down and Lookup reported no error")
 	}
 	if len(entries) != 1 || entries[0] != nil {
 		t.Fatalf("Redis down returned %+v, want one empty slot", entries)
+	}
+
+	// Com as 5 tentativas de conexao padrao do go-redis, isto levava ~430 ms por operacao (medido),
+	// ate quatro vezes por cotacao. A folga sobre os 100 ms cobre maquina lenta.
+	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+		t.Fatalf("Lookup with Redis down took %s; the cache can never cost more than its 100ms budget", elapsed)
+	}
+}
+
+func TestAHungRedisCostsAtMostTheTimeout(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+		}
+	}()
+
+	store := NewRedis(listener.Addr().String(), 100*time.Millisecond, 24*time.Hour)
+	defer store.Close()
+
+	start := time.Now()
+	if _, err := store.Lookup(context.Background(), []string{"quote:v1:corretora-a:partner-flaky:abc"}); err == nil {
+		t.Fatal("a Redis that never answers was treated as an answer")
+	}
+	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+		t.Fatalf("Lookup against a hung Redis took %s, want about the 100ms budget", elapsed)
 	}
 }

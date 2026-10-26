@@ -23,11 +23,13 @@ var (
 type memoryCache struct {
 	entries map[string]*quotecache.Entry
 	down    bool
+	calls   int
 }
 
 func newMemoryCache() *memoryCache { return &memoryCache{entries: map[string]*quotecache.Entry{}} }
 
 func (m *memoryCache) Lookup(_ context.Context, keys []string) ([]*quotecache.Entry, error) {
+	m.calls++
 	out := make([]*quotecache.Entry, len(keys))
 	if m.down {
 		return out, errors.New("redis down")
@@ -39,6 +41,7 @@ func (m *memoryCache) Lookup(_ context.Context, keys []string) ([]*quotecache.En
 }
 
 func (m *memoryCache) Save(_ context.Context, key string, quote partner.Quote, at time.Time) error {
+	m.calls++
 	if m.down {
 		return errors.New("redis down")
 	}
@@ -245,6 +248,9 @@ func TestRedisDownDoesNotStopTheQuotation(t *testing.T) {
 	response, err := service(newPartners(), cache).QuoteWithFallback(context.Background(), "corretora-a", validRequest())
 	if err != nil || len(response.Quotes) != 3 || response.Degraded {
 		t.Fatalf("with Redis down: quotes=%d degraded=%v err=%v; want the 3 partner quotes", len(response.Quotes), response.Degraded, err)
+	}
+	if cache.calls != 1 {
+		t.Fatalf("%d cache operations with Redis down; after the failed lookup the quotation must not try to save", cache.calls)
 	}
 }
 

@@ -143,14 +143,16 @@ func (s *Service) lookup(ctx context.Context, tenant string, request Request) ([
 
 	entries, err := s.cache.Lookup(ctx, keys)
 	if err != nil {
+		// Sem chaves, esta cotacao tambem nao tenta gravar: o Redis fora custa uma leitura, nao quatro.
 		log.Printf("quotation: cache unavailable, quoting without it: %v", err)
+		return nil, cached
 	}
 	copy(cached, entries)
 	return keys, cached
 }
 
 func (s *Service) save(ctx context.Context, keys []string, i int, quote partner.Quote) {
-	if s.cache == nil {
+	if s.cache == nil || keys == nil {
 		return
 	}
 	if err := s.cache.Save(ctx, keys[i], quote, s.now()); err != nil {

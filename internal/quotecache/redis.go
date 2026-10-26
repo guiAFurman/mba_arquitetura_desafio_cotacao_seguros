@@ -21,23 +21,27 @@ type Entry struct {
 // Redis guarda cada entrada com EXPIRE igual a idade maxima (24 h): o descarte e do proprio Redis,
 // nao de uma rotina manual.
 type Redis struct {
-	client *redis.Client
-	maxAge time.Duration
+	client  *redis.Client
+	timeout time.Duration
+	maxAge  time.Duration
 }
 
-// NewRedis limita cada operacao a timeout: o cache nunca pode custar mais que a consulta que ele
-// evita.
+// NewRedis limita cada operacao, inteira, a timeout: o cache nunca pode custar mais que a consulta
+// que ele evita. Sem isso, o go-redis tenta conectar 5 vezes por operacao com o Redis fora.
 func NewRedis(addr string, timeout, maxAge time.Duration) *Redis {
 	return &Redis{
 		client: redis.NewClient(&redis.Options{
-			Addr:         addr,
-			DialTimeout:  timeout,
-			ReadTimeout:  timeout,
-			WriteTimeout: timeout,
-			PoolTimeout:  timeout,
-			MaxRetries:   -1,
+			Addr:                  addr,
+			DialTimeout:           timeout,
+			DialerRetries:         1,
+			ReadTimeout:           timeout,
+			WriteTimeout:          timeout,
+			PoolTimeout:           timeout,
+			MaxRetries:            -1,
+			ContextTimeoutEnabled: true,
 		}),
-		maxAge: maxAge,
+		timeout: timeout,
+		maxAge:  maxAge,
 	}
 }
 
@@ -49,6 +53,8 @@ func (r *Redis) Lookup(ctx context.Context, keys []string) ([]*Entry, error) {
 		return entries, nil
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
 	values, err := r.client.MGet(ctx, keys...).Result()
 	if err != nil {
 		return entries, fmt.Errorf("cache lookup: %w", err)
@@ -73,6 +79,9 @@ func (r *Redis) Save(ctx context.Context, key string, quote partner.Quote, at ti
 	if err != nil {
 		return fmt.Errorf("cache save: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
 	if err := r.client.Set(ctx, key, raw, r.maxAge).Err(); err != nil {
 		return fmt.Errorf("cache save: %w", err)
 	}
