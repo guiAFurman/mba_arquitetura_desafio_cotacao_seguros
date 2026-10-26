@@ -1,0 +1,223 @@
+# Variacao declarada 3 (para a evidencia 6): make load ARGS="-tenant corretora-b -distinct 50 -concurrency 2 -requests 600 -baseline 0"
+# Por que: a carga padrao dura 11 s e o cache ja esta quente antes da primeira exportacao de metricas (a cada 10 s),
+# entao o Prometheus nao ve a subida do hit rate. Aqui a corretora-b comeca com o cache frio (a chave tem a corretora),
+# e as 50 cotacoes distintas com 2 em voo fazem o aquecimento durar cerca de um minuto.
+# Inicio 2026-10-26 22:45:36 UTC
+
+docker compose run --rm --build loadgen -tenant corretora-b -distinct 50 -concurrency 2 -requests 600 -baseline 0
+ Image mba_arquitetura_desafio_cotacao_seguros-partner-slow Building 
+ Image mba_arquitetura_desafio_cotacao_seguros-partner-flaky Building 
+ Image mba_arquitetura_desafio_cotacao_seguros-quotation-api Building 
+ Image mba_arquitetura_desafio_cotacao_seguros-partner-degrading Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 2.54kB 0.0s done
+#1 DONE 0.0s
+
+#2 [partner-slow internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.07kB 0.0s done
+#2 DONE 0.0s
+
+#3 [auth] library/alpine:pull token for registry-1.docker.io
+#3 DONE 0.0s
+
+#4 [auth] library/golang:pull token for registry-1.docker.io
+#4 DONE 0.0s
+
+#5 [partner-slow internal] load metadata for docker.io/library/alpine:3.20
+#5 DONE 0.9s
+
+#6 [partner-flaky internal] load metadata for docker.io/library/golang:1.25-alpine
+#6 DONE 0.9s
+
+#7 [partner-flaky internal] load .dockerignore
+#7 transferring context: 128B done
+#7 DONE 0.0s
+
+#8 [partner-flaky stage-1 1/2] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#8 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc 0.0s done
+#8 DONE 0.0s
+
+#9 [partner-degrading build 1/6] FROM docker.io/library/golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59
+#9 resolve docker.io/library/golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 0.0s done
+#9 DONE 0.0s
+
+#10 [partner-degrading internal] load build context
+#10 transferring context: 2.72kB done
+#10 DONE 0.0s
+
+#11 [quotation-api build 6/6] RUN CGO_ENABLED=0 go build -trimpath -o /out/app ./cmd/quotation-api
+#11 CACHED
+
+#12 [quotation-api stage-1 2/2] COPY --from=build /out/app /app
+#12 CACHED
+
+#13 [partner-flaky build 4/6] RUN go mod download
+#13 CACHED
+
+#14 [partner-flaky build 6/6] RUN CGO_ENABLED=0 go build -trimpath -o /out/app ./cmd/partner-mock
+#14 CACHED
+
+#15 [partner-flaky build 5/6] COPY . .
+#15 CACHED
+
+#16 [partner-flaky build 3/6] COPY go.mod go.sum ./
+#16 CACHED
+
+#17 [partner-flaky build 2/6] WORKDIR /src
+#17 CACHED
+
+#18 [partner-flaky stage-1 2/2] COPY --from=build /out/app /app
+#18 CACHED
+
+#19 [partner-flaky] exporting to image
+#19 exporting layers
+#19 exporting layers done
+#19 exporting manifest sha256:fcd54109ae90140d0787dd299369528f1cf70560c75f171a2c4cf05f69a921ff done
+#19 exporting config sha256:cd6e590dc65a15ac7130a960672c94e4b83af6846e8d39497d278a1501cd354e 0.0s done
+#19 exporting attestation manifest sha256:e06fb72138e63b4b94de5daeed57a5063569b9cab1561c4a4785b4279bdb0c85
+#19 exporting attestation manifest sha256:e06fb72138e63b4b94de5daeed57a5063569b9cab1561c4a4785b4279bdb0c85 0.1s done
+#19 exporting manifest list sha256:caa5c0837bade0e42ff413568b09d09a0f436b9cdaac8c328c2062d2ecbc5985 0.1s done
+#19 naming to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-partner-flaky:latest
+#19 naming to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-partner-flaky:latest 0.0s done
+#19 unpacking to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-partner-flaky:latest 0.0s done
+#19 DONE 0.3s
+
+#20 [partner-slow] exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:9d1ce619cdd5a9c64ebfcfbc58d69bc7127540f70321190bed47c4905fcf7a1c 0.0s done
+#20 exporting config sha256:2b1a4a959cf7ff901265055d7aa682ee44064139fcaabafe0a41ed0bddba1ca8 0.0s done
+#20 exporting attestation manifest sha256:6093120686b34a77fb08fe253d100930ecfdc54f1ce1d5ac767dddb5fe5af366 0.1s done
+#20 exporting manifest list sha256:9c6ba3f14c43e72b7c0d7d88ccd614e442554a7cb815df0ee63a372f732b1e83 0.1s done
+#20 naming to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-partner-slow:latest 0.0s done
+#20 unpacking to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-partner-slow:latest 0.0s done
+#20 DONE 0.3s
+
+#21 [partner-degrading] exporting to image
+#21 exporting layers done
+#21 exporting manifest sha256:60ce9269c4a22a4f688d077f622a7dece404cd7b05273b93792ff8da19479b13 0.0s done
+#21 exporting config sha256:472c41bc47c45fea17c9c4665415c6fb8375f6f7e5ff950b7a483597fe4cd240 0.0s done
+#21 exporting attestation manifest sha256:1d35159dc77e9d56bfa9f33ec614551b619092f1b24736fdfa0ce636f0347fed 0.1s done
+#21 exporting manifest list sha256:e2339c5267b32abe0746d82f49ba5a1a731937283573b8ab94fa8294efa823eb 0.1s done
+#21 naming to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-partner-degrading:latest 0.0s done
+#21 unpacking to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-partner-degrading:latest 0.0s done
+#21 DONE 0.3s
+
+#22 [quotation-api] exporting to image
+#22 exporting layers done
+#22 exporting manifest sha256:8c65b8166b12f648e532bc62c01e404e09b7ba101b3902e9db8963466e9a5d06 0.0s done
+#22 exporting config sha256:2742c6f50b0fd566c8bebb0503356f3d0333c392571c95916c81de0763f3ba1f 0.0s done
+#22 exporting attestation manifest sha256:93cc32feeba2396832e3d05c67acae6717754dba64b62ee3ddb66fcdaad34489 0.1s done
+#22 exporting manifest list sha256:b6db3df04fb2a3b937b6f4dfceae16364ef83368999b99de646d51bb778d2b84 0.1s done
+#22 naming to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-quotation-api:latest 0.0s done
+#22 unpacking to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-quotation-api:latest 0.0s done
+#22 DONE 0.3s
+
+#23 [partner-flaky] resolving provenance for metadata file
+#23 DONE 0.2s
+
+#24 [quotation-api] resolving provenance for metadata file
+#24 DONE 0.0s
+
+#25 [partner-degrading] resolving provenance for metadata file
+#25 DONE 0.1s
+
+#26 [partner-slow] resolving provenance for metadata file
+#26 DONE 0.1s
+ Image mba_arquitetura_desafio_cotacao_seguros-partner-slow Built 
+ Image mba_arquitetura_desafio_cotacao_seguros-quotation-api Built 
+ Image mba_arquitetura_desafio_cotacao_seguros-partner-degrading Built 
+ Image mba_arquitetura_desafio_cotacao_seguros-partner-flaky Built 
+ Container cotacao-redis Running 
+ Container cotacao-partner-flaky Running 
+ Container cotacao-quotation-api Running 
+ Container cotacao-jaeger Running 
+ Container cotacao-otel-collector Running 
+ Container cotacao-partner-slow Running 
+ Container cotacao-partner-degrading Running 
+ Container cotacao-partner-slow Waiting 
+ Container cotacao-partner-flaky Waiting 
+ Container cotacao-partner-degrading Waiting 
+ Container cotacao-partner-slow Healthy 
+ Container cotacao-partner-flaky Healthy 
+ Container cotacao-partner-degrading Healthy 
+ Image mba_arquitetura_desafio_cotacao_seguros-loadgen Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 3.01kB 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.07kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/alpine:3.20
+#3 DONE 0.3s
+
+#4 [internal] load metadata for docker.io/library/golang:1.25-alpine
+#4 DONE 0.3s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 128B done
+#5 DONE 0.0s
+
+#6 [stage-1 1/2] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#6 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc 0.0s done
+#6 DONE 0.0s
+
+#7 [build 1/6] FROM docker.io/library/golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59
+#7 resolve docker.io/library/golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 2.72kB 0.0s done
+#8 DONE 0.0s
+
+#9 [build 5/6] COPY . .
+#9 CACHED
+
+#10 [build 6/6] RUN CGO_ENABLED=0 go build -trimpath -o /out/app ./cmd/loadgen
+#10 CACHED
+
+#11 [build 2/6] WORKDIR /src
+#11 CACHED
+
+#12 [build 3/6] COPY go.mod go.sum ./
+#12 CACHED
+
+#13 [build 4/6] RUN go mod download
+#13 CACHED
+
+#14 [stage-1 2/2] COPY --from=build /out/app /app
+#14 CACHED
+
+#15 exporting to image
+#15 exporting layers done
+#15 exporting manifest sha256:7af98693565170e646c5bf4da17a5e6055615a6183191e306e04f8fd4ebb7227 done
+#15 exporting config sha256:41d0a09fb408703816b9aa2480fdeb39f23794b260432d2d8f10ea8d4d36a342 done
+#15 exporting attestation manifest sha256:1a79ea07debb996426a50519836c7734c58a2ea9e416a2a1efac4de7d12b6085 0.0s done
+#15 exporting manifest list sha256:fe100510c853553a8d933e78086ab011e9b78700ff19568be93fd77e2497117a 0.0s done
+#15 naming to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-loadgen:latest done
+#15 unpacking to docker.io/library/mba_arquitetura_desafio_cotacao_seguros-loadgen:latest done
+#15 DONE 0.1s
+
+#16 resolving provenance for metadata file
+#16 DONE 0.0s
+ Image mba_arquitetura_desafio_cotacao_seguros-loadgen Built 
+ Container cotacao-quotation-api Waiting 
+ Container cotacao-quotation-api Healthy 
+ Container mba_arquitetura_desafio_cotacao_seguros-loadgen-run-d008fec82833 Creating 
+ Container mba_arquitetura_desafio_cotacao_seguros-loadgen-run-d008fec82833 Created 
+load: 600 requests, 2 at a time...
+
+loadgen · http://quotation-api:8080/quotes · tenant corretora-b · 50 distinct quotes
+
+load — 600 requests, 2 in flight, 22:45:43 UTC to 22:46:34 UTC
+  success        600 of 600 (100%)
+  latency        p50 0ms   p95 1.90s   p99 2.00s   max 2.04s
+  throughput     11.7 req/s in 51.07s
+
+where to look
+  Jaeger         http://localhost:16686 · service quotation-api · operation POST /quotes
+  load window    22:45:43 UTC to 22:46:34 UTC (sort by longest first)
+  step by step   docs/roteiro-cenario-de-falha.md
+
+# Fim 2026-10-26 22:46:34 UTC

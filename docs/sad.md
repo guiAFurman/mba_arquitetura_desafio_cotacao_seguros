@@ -479,7 +479,7 @@ histogram_quantile(0.95, sum by (partner, le) (rate(partner_quote_duration_secon
 
 O span `POST /quotes` ainda recebe o resumo: `tenant.id`, `quote.degraded`, `quote.count`, `quote.from_cache` e `quote.missing_partners`.
 
-**Nunca** entram em atributo de span ou de métrica: CPF, placa, `quote_id` (dado pessoal e cardinalidade sem teto). O `tenant_id` entra só no span da requisição, e **não** como rótulo de métrica: o escopo do breaker é por parceira, e centenas de corretoras multiplicariam as séries. Isso é preso pelo teste `TestNoPersonalDataInMetricsOrSpans` e é conferido também nos dados reais da execução do "depois", com a busca registrada nas evidências.
+**Nunca** entram em atributo de span ou de métrica: CPF, placa, `quote_id` (dado pessoal e cardinalidade sem teto). O `tenant_id` entra só no span da requisição, e **não** como rótulo de métrica: o escopo do breaker é por parceira, e centenas de corretoras multiplicariam as séries. Isso é preso pelo teste `TestNoPersonalDataInMetricsOrSpans` e foi conferido nos dados reais da sessão do "depois": zero ocorrências em 1041 traces e 409 séries ([evidencias/sem-dado-pessoal-depois.txt](evidencias/sem-dado-pessoal-depois.txt)).
 
 ### 4.6 Componentes da fatia implementada (C4 nível 3)
 

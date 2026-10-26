@@ -32,7 +32,7 @@ Preparação
                     └─► Fechamento ─► Extras (opcional, só com o resto pronto)
 ```
 
-**Status atual:** Preparação e 1A concluídos ([sad.md](sad.md) §1 a §4). **2A e 2B concluídos** (mecanismos e instrumentação). Os testes da 2C já foram escritos junto de cada mecanismo. Próximo passo: **2D** (evidências do "depois").
+**Status atual:** Preparação e 1A concluídos ([sad.md](sad.md) §1 a §4). **Entrega 2 concluída** (2A mecanismos, 2B instrumentação, 2C testes, 2D evidências). Próximo passo: **1B** (SAD §5 a §8 com os números medidos).
 
 ---
 
@@ -226,14 +226,19 @@ Depende da **1A**: nenhum número entra no código sem estar defendido no SAD.
 
 Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda de uma linha**. Capturar **com o ambiente de pé**.
 
-- [ ] 1. Relatório do `make reproduce` "depois", com a mesma carga → `reproduce-depois.txt`
-- [ ] 2. Saída do `make test` → `make-test.txt`
-- [ ] 3. Trace com breaker aberto (export JSON do Jaeger)
-- [ ] 4. Trace servido de cache (export JSON do Jaeger)
-- [ ] 5. Gráfico do estado do breaker no tempo + PromQL + janela
-- [ ] 6. Gráfico do hit rate do cache + PromQL + janela
-- [ ] 7. Gráficos do p95 do `POST /quotes`, "antes" e "depois", + PromQL + janela
-- [ ] Extra: busca por CPF, placa e `quote_id` nas traces exportadas do Jaeger e nos rótulos do Prometheus da execução do "depois" (comando + resultado), que o SAD §4.5 cita
+Índice completo, com comando, artefato e legenda de cada uma: [evidencias/depois.md](evidencias/depois.md).
+
+- [x] 1. Relatório do `make reproduce` "depois", com a mesma carga → [reproduce-depois.txt](evidencias/reproduce-depois.txt): p95 sob carga **8,01 s → 219 ms**, sucesso **60% → 100%**, vazão 8,0 → 695 req/s
+- [x] 2. Saída do `make test` → [make-test.txt](evidencias/make-test.txt): 100 testes passando, cada um marcado `[original]` ou `[novo]`
+- [x] 3. Trace com breaker aberto → [trace-depois-breaker-aberto.json](evidencias/trace-depois-breaker-aberto.json) (variação declarada 1: `-distinct 200`)
+- [x] 4. Trace servido de cache → [trace-depois-cache.json](evidencias/trace-depois-cache.json) (execução padrão)
+- [x] 5. Estado do breaker no tempo → [breaker-estado-depois.png](evidencias/breaker-estado-depois.png) + [breaker-transicoes-depois.txt](evidencias/breaker-transicoes-depois.txt) (variação declarada 2: sondas a cada 8 s)
+- [x] 6. Hit rate do cache → [hit-rate-depois.png](evidencias/hit-rate-depois.png) (variação declarada 3: `corretora-b`, cache frio)
+- [x] 7. p95 do `POST /quotes` → [p95-depois.png](evidencias/p95-depois.png) e [p95-antes.png](evidencias/p95-antes.png), com linha de referência de 9,7 s para a mesma escala
+- [x] Extra: consultas por cotação entregue → [consultas-depois.txt](evidencias/consultas-depois.txt): **4,36 → 0,27**
+- [x] Extra: nenhum dado pessoal nos dados reais → [sem-dado-pessoal-depois.txt](evidencias/sem-dado-pessoal-depois.txt)
+
+**Números que a 1B vai usar:** a RNF-01 a RNF-05 já têm o "depois" medido (p95 219 ms; sucesso 100%; 0,27 consulta por cotação; vazão 695 req/s; chamadas com circuito aberto = 0, provado pelo trace da evidência 3). Os limiares de alerta da §6 podem partir do que se viu: a `partner-flaky` oscilou 10 vezes entre meio-aberto e aberto antes de fechar.
 
 ---
 
@@ -291,4 +296,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | 2A concluído: cache Redis por parceira, resposta parcial e contrato de degradação, com testes; Redis ligado no compose | `431315f` |
 | 2026-10-26 | Revisão do 2A: corrigido o custo do Redis fora (5 tentativas de conexão, ~430 ms por operação → 1 tentativa e teto real de 100 ms; sem gravação depois de leitura falha); RF do SAD citam os testes pelo nome | `173116b` |
 | 2026-10-26 | 2B: 4 métricas de negócio e 2 marcações no trace, com testes de emissão; nomes conferidos no Prometheus e no Jaeger; SAD §4.5 com os nomes reais | `2f34508` |
-| 2026-10-26 | Revisão do 2B: nomes do Prometheus no código (busca estática), afirmação sem evidência tirada do SAD §4.5, itens de §6, 2D e README | este commit |
+| 2026-10-26 | Revisão do 2B: nomes do Prometheus no código (busca estática), afirmação sem evidência tirada do SAD §4.5, itens de §6, 2D e README | `9689381` |
+| 2026-10-26 | 2D: as 7 evidências do "depois", mais consultas por cotação e busca de dado pessoal, numa única sessão com 3 variações declaradas | este commit |

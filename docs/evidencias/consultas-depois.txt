@@ -1,0 +1,20 @@
+# Consultas compradas no depois (Prometheus, instantaneo em 22:39:00 UTC)
+# A execucao padrao de reproduce-depois.txt foi de 22:38:26 a 22:38:37 UTC; a variacao 1 so comecou as 22:39:01.
+# Lendo os contadores em 22:39:00, eles contem so a execucao padrao (mesma carga do antes).
+
+## sum by (server_address, http_response_status_code) (http_client_request_duration_seconds_count)
+  {"http_response_status_code":"200","server_address":"partner-degrading"}  5
+  {"http_response_status_code":"200","server_address":"partner-flaky"}  29
+  {"http_response_status_code":"200","server_address":"partner-slow"}  5
+  {"http_response_status_code":"503","server_address":"partner-flaky"}  18
+
+## sum by (http_response_status_code) (http_server_request_duration_seconds_count{http_route="/quotes"})
+  {"http_response_status_code":"200"}  210
+
+## sum(http_client_request_duration_seconds_count) / sum(http_server_request_duration_seconds_count{http_route="/quotes", http_response_status_code="200"})
+  {}  0.2714285714285714
+
+## sum by (result) (quote_cache_lookups_total)
+  {"result":"miss"}  57
+  {"result":"hit"}  573
+

@@ -1,0 +1,54 @@
+# Variacao declarada 2: uma cotacao nova a cada 8 s, ate os dois circuitos voltarem a fechar (limite 5 min).
+# Serve para dar ao meio-aberto as 2 requisicoes de teste que fecham o circuito (BREAKER_HALF_OPEN_REQUESTS=2),
+# completando o degrau da evidencia 5. CPF e placa sao ficticios (99900000xxx, EVDxxxx).
+# Inicio 2026-10-26 22:40:01 UTC
+
+22:40:04 sonda 01 HTTP200 1.966285s faltou: partner-flaky","reason":"partner_error 
+22:40:14 sonda 02 HTTP200 1.764569s faltou: partner-flaky","reason":"circuit_open 
+22:40:25 sonda 03 HTTP200 1.923537s faltou: partner-flaky","reason":"partner_error 
+22:40:36 sonda 04 HTTP200 1.661393s faltou: partner-flaky","reason":"circuit_open 
+22:40:47 sonda 05 HTTP200 1.914414s faltou: partner-flaky","reason":"partner_error 
+22:40:57 sonda 06 HTTP200 1.751540s faltou: partner-flaky","reason":"circuit_open 
+22:41:08 sonda 07 HTTP200 1.988791s faltou: partner-flaky","reason":"partner_error 
+22:41:19 sonda 08 HTTP200 1.838450s faltou: partner-flaky","reason":"circuit_open 
+22:41:30 sonda 09 HTTP200 1.913392s faltou: partner-flaky","reason":"partner_error 
+22:41:42 sonda 10 HTTP200 1.727618s faltou: partner-flaky","reason":"circuit_open 
+22:41:53 sonda 11 HTTP200 2.025907s faltou: partner-flaky","reason":"partner_error 
+22:42:04 sonda 12 HTTP200 1.756710s faltou: partner-flaky","reason":"circuit_open 
+22:42:15 sonda 13 HTTP200 1.969124s faltou: partner-flaky","reason":"partner_error 
+22:42:26 sonda 14 HTTP200 1.778660s faltou: partner-flaky","reason":"circuit_open 
+22:42:37 sonda 15 HTTP200 1.851287s faltou: partner-flaky","reason":"partner_error 
+22:42:47 sonda 16 HTTP200 1.795778s faltou: partner-flaky","reason":"circuit_open 
+22:42:58 sonda 17 HTTP200 2.021940s faltou: nenhuma
+22:43:09 sonda 18 HTTP200 1.927269s faltou: partner-flaky","reason":"partner_error 
+22:43:20 sonda 19 HTTP200 1.725357s faltou: partner-flaky","reason":"circuit_open 
+22:43:31 sonda 20 HTTP200 1.996852s faltou: nenhuma
+22:43:42 sonda 21 HTTP200 2.000076s faltou: nenhuma
+# os dois circuitos fecharam
+## Transicoes registradas no log da quotation-api
+2026/10/26 22:38:36 quotation-api: circuit of partner-flaky went from closed to open
+2026/10/26 22:38:55 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:39:04 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:39:12 quotation-api: circuit of partner-degrading went from closed to open
+2026/10/26 22:39:25 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:39:35 quotation-api: circuit of partner-degrading went from open to half-open
+2026/10/26 22:40:03 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:40:14 quotation-api: circuit of partner-degrading went from half-open to closed
+2026/10/26 22:40:25 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:40:25 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:40:45 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:40:46 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:41:05 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:41:08 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:41:25 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:41:30 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:41:45 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:41:53 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:42:14 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:42:15 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:42:35 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:42:36 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:42:55 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:43:09 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:43:25 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:43:41 quotation-api: circuit of partner-flaky went from half-open to closed

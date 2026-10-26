@@ -1,0 +1,39 @@
+# Complemento da evidencia 5: transicoes do breaker contadas pela metrica (instantaneo)
+# Consulta: sum by (partner, from, to) (partner_breaker_transitions_total)
+# Em 2026-10-26 22:49:34 UTC, acumulado desde o make reproduce de reproduce-depois.txt (22:38 UTC)
+
+partner-degrading  closed -> open  1
+partner-degrading  half-open -> closed  1
+partner-degrading  open -> half-open  1
+partner-flaky  closed -> open  1
+partner-flaky  half-open -> closed  1
+partner-flaky  half-open -> open  10
+partner-flaky  open -> half-open  11
+
+# As mesmas transicoes, uma por linha, no log da quotation-api:
+2026/10/26 22:38:36 quotation-api: circuit of partner-flaky went from closed to open
+2026/10/26 22:38:55 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:39:04 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:39:12 quotation-api: circuit of partner-degrading went from closed to open
+2026/10/26 22:39:25 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:39:35 quotation-api: circuit of partner-degrading went from open to half-open
+2026/10/26 22:40:03 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:40:14 quotation-api: circuit of partner-degrading went from half-open to closed
+2026/10/26 22:40:25 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:40:25 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:40:45 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:40:46 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:41:05 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:41:08 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:41:25 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:41:30 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:41:45 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:41:53 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:42:14 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:42:15 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:42:35 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:42:36 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:42:55 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:43:09 quotation-api: circuit of partner-flaky went from half-open to open
+2026/10/26 22:43:25 quotation-api: circuit of partner-flaky went from open to half-open
+2026/10/26 22:43:41 quotation-api: circuit of partner-flaky went from half-open to closed
