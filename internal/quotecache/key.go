@@ -39,8 +39,3 @@ func (k *Keyer) Key(tenant, partner string, risk []string) string {
 	mac.Write([]byte(strings.Join(risk, "|")))
 	return "quote:" + Version + ":" + tenant + ":" + partner + ":" + hex.EncodeToString(mac.Sum(nil))
 }
-
-// TenantPattern casa todas as chaves de uma corretora, para apaga-las com SCAN + DEL.
-func TenantPattern(tenant string) string {
-	return "quote:" + Version + ":" + tenant + ":*"
-}

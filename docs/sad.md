@@ -204,6 +204,7 @@ Os RF-01 a RF-04 saem do contrato que já existe; os RF-05 a RF-09 são **criado
 | RF-07 | Com o circuito de uma parceira **aberto**, a API **não faz** a chamada HTTP a ela; a parceira aparece em `missing_partners` com o motivo `circuit_open`, ou é preenchida pela cotação vencida do cache. | **nova** (D3, D4) | `TestBreakerOpensOnTheFlakySequenceAndStopsCallingThePartner` (`internal/partner/breaker_test.go`): a parceira não recebe nenhuma das 20 chamadas feitas com o circuito aberto |
 | RF-08 | Se nenhuma parceira responder e não houver cotação no cache, a API responde **503** `{"error":"no partner insurer available","missing_partners":[...]}`, distinto do 502 atual. | **nova** (D8) | `TestNothingAvailableIsABusinessError` e `TestTheAPIWithFallbackAnswers503WhenNothingIsAvailable` (`internal/quotation/fallback_test.go`) |
 | RF-09 | Uma cotação gravada para uma corretora **nunca** é servida a outra, mesmo com corpo idêntico. | **nova** (D7); R5 | `TestOneBrokerNeverReceivesTheCachedQuoteOfAnother` (`internal/quotation/fallback_test.go`) e `TestTheSameRiskIsADifferentKeyForEachBroker` (`internal/quotecache/quotecache_test.go`) |
+| RF-10 | Toda cotação apresentada, inclusive a servida de cache ou numa resposta parcial, gera um registro de auditoria (corretora, parceira, `quote_id` original, prêmio, instante, `source`, idade), retido por 5 anos sem regravação. | contrato atual; R6 (SUSEP) | **[proposta]**: o acervo está fora do escopo do PoC (§4.4, §5.2); o que o PoC garante e testa é que cada cotação apresentada já carrega esses dados (RF-04) |
 
 ### 3.2 Não funcionais
 
@@ -485,7 +486,9 @@ A escolha das bibliotecas está defendida na §4.2 (breaker) e na §4.3 (o clien
 
 **Defesa.** O dado pessoal fica no Brasil, sem transferência internacional (residência). O bloqueio de escrita atende ao "não regravável" da SUSEP sem hardware próprio (retenção). O prefixo por corretora e as permissões por prefixo separam as corretoras (segregação). O custo é por uso: Redis e auditoria somam ~R$ 365 por mês (§8).
 
-**Descartadas.** (b) on-premise exige investimento em servidores, armazenamento com bloqueio de escrita e datacenter para guardar ~160 GB em 5 anos, além de capacidade fixa para um tráfego que oscila. (c) híbrido põe dois ambientes para operar e um link no caminho da auditoria, sem entregar nada que o bloqueio de escrita da opção (a) não entregue.
+**Descartadas.**
+- (b) **on-premise.** Financeiro: investimento em servidores, armazenamento com bloqueio de escrita e datacenter para guardar ~160 GB em 5 anos, além de capacidade fixa para um tráfego que oscila. Regulatório: a prova de que o registro não foi regravado (SUSEP) passa a depender de hardware e de processo próprios, que a Prumo teria de manter e demonstrar por 5 anos, quando o bloqueio de escrita do provedor já vem com essa garantia.
+- (c) **híbrido.** Financeiro: dois ambientes para operar e um link dedicado no caminho da auditoria. Regulatório: o dado pessoal (CPF e placa) passa a transitar e a ficar em dois ambientes, o que amplia o que a Prumo, como operadora, tem de proteger e segregar sob a LGPD, sem ganho de residência, que a opção (a) já dá.
 
 **Consequências ruins.** O preço é em dólar: o S3 Standard em São Paulo custa US$ 0,0405 por GB-mês, ~76% acima dos US$ 0,023 da região da Virgínia. Só existe uma região da AWS no Brasil: perder a região inteira exige um plano fora dela, que é o cenário (c) da §7.
 
