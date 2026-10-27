@@ -173,6 +173,7 @@ Preencher conforme decidir na §4. O código tem que usar **exatamente** estes v
 | Chave do cache (por extenso) | `quote:v1:{tenant_id}:{partner}:{hmac_sha256(documento\|ano_nascimento\|placa\|modelo\|ano_veiculo\|valor_centavos\|cobertura)}` | SAD §4.3 (D7) e README |
 | Estratégia de fallback | resposta parcial; 503 de negócio só se nada estiver disponível | SAD §4.4 (D8) |
 | Onde fica o fallback | novo método em `internal/quotation/service.go`; `Service.Quote` mantido | SAD §4.4 (D9) |
+| Agregação | paralela no `QuoteWithFallback`; teto estrutural de 2,0 s (maior timeout) | SAD §4.8 (D16) |
 | Campo/cabeçalho de degradação | `degraded` + `missing_partners` + `source`/`age_seconds` por cotação | SAD §4.4 (D10) e README |
 | Hospedagem | nuvem pública, AWS `sa-east-1`; auditoria em S3 com Object Lock (proposta) | SAD §5.2 (D11) |
 | Alertas | A1 breaker fora de fechado 10 min; A2 p95 > 80% do timeout; A3 Redis fora; A4 hit rate < 20% por 1 dia | SAD §6.2 (D13) |
@@ -234,8 +235,10 @@ Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda
 
 Índice completo, com comando, artefato e legenda de cada uma: [evidencias/depois.md](evidencias/depois.md).
 
-- [x] 1. Relatório do `make reproduce` "depois", com a mesma carga → [reproduce-depois.txt](evidencias/reproduce-depois.txt): p95 sob carga **8,01 s → 219 ms**, sucesso **60% → 100%**, vazão 8,0 → 695 req/s
-- [x] 2. Saída do `make test` → [make-test.txt](evidencias/make-test.txt): 100 testes passando, cada um marcado `[original]` ou `[novo]`
+> As evidências 1, 2, 4 e 7 e as complementares foram **refeitas depois do bônus** (agregação paralela, sessão 2); as versões em série ficaram com o sufixo `-serie`. As 3, 5 e 6 são da sessão 1 e continuam valendo (breaker e cache iguais).
+
+- [x] 1. Relatório do `make reproduce` "depois", com a mesma carga → [reproduce-depois.txt](evidencias/reproduce-depois.txt): p95 sob carga **8,01 s → 202 ms**, sucesso **60% → 100%**, vazão 8,0 → 730 req/s; baseline 2,03 s → 1,68 s
+- [x] 2. Saída do `make test` → [make-test.txt](evidencias/make-test.txt): 102 testes passando (64 originais, 38 novos), cada um marcado `[original]` ou `[novo]`, e o detector de corrida limpo
 - [x] 3. Trace com breaker aberto → [trace-depois-breaker-aberto-rapido.json](evidencias/trace-depois-breaker-aberto-rapido.json): as duas parceiras curto-circuitadas, a slow do cache, **0,59 ms** e nenhum `HTTP POST` (variação declarada 4). Complemento da variação 1: [trace-depois-breaker-aberto.json](evidencias/trace-depois-breaker-aberto.json)
 - [x] 4. Trace servido de cache → [trace-depois-cache.json](evidencias/trace-depois-cache.json) (execução padrão)
 - [x] 5. Estado do breaker no tempo → [breaker-estado-depois.png](evidencias/breaker-estado-depois.png) + [breaker-transicoes-depois.txt](evidencias/breaker-transicoes-depois.txt) (variação declarada 2: sondas a cada 8 s)
@@ -244,7 +247,7 @@ Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda
 - [x] Extra: consultas por cotação entregue → [consultas-depois.txt](evidencias/consultas-depois.txt): **4,36 → 0,27**
 - [x] Extra: nenhum dado pessoal nos dados reais → [sem-dado-pessoal-depois.txt](evidencias/sem-dado-pessoal-depois.txt)
 
-**Números que a 1B vai usar:** a RNF-01 a RNF-05 já têm o "depois" medido (p95 219 ms; sucesso 100%; 0,27 consulta por cotação; vazão 695 req/s; chamadas com circuito aberto = 0, provado pelo trace da evidência 3). Os limiares de alerta da §6 podem partir do que se viu: a `partner-flaky` oscilou 10 vezes entre meio-aberto e aberto antes de fechar.
+**Números usados no SAD:** a RNF-01 a RNF-05 têm o "depois" medido (p95 202 ms; sucesso 100%; 0,27 consulta por cotação; vazão 730 req/s; chamadas com circuito aberto = 0, provado pelo trace da evidência 3). Os limiares de alerta da §6 podem partir do que se viu: a `partner-flaky` oscilou 10 vezes entre meio-aberto e aberto antes de fechar.
 
 ---
 
@@ -277,9 +280,10 @@ Depende das duas entregas.
 
 Só depois de todo o obrigatório pronto. Não conta para nenhum critério de aceite.
 
-- [ ] **Paralelizar a agregação** em `internal/quotation/service.go`, sobrepondo as três parceiras em vez de somá-las
-  - [ ] Registrar no SAD como decisão (contexto, opções, escolha, consequências), porque muda o p95
-  - [ ] Refazer as evidências de p95 se for implementado
+- [x] **Paralelizar a agregação** em `internal/quotation/service.go` (`QuoteWithFallback`), sobrepondo as três parceiras em vez de somá-las; `Service.Quote` continua em série, como o teste original exige
+  - [x] Testes: `TestTheFallbackPathQuotesThePartnersAtTheSameTime` (barreira: as três em voo juntas, sem `sleep`) e `TestTheParallelResponseIsTheSameWhoeverFinishesFirst`; detector de corrida limpo (no contêiner `golang:1.25`)
+  - [x] Registrado no SAD como decisão **D16** (§4.8), com alternativa descartada e consequências ruins; teto estrutural de 3,0 s para 2,0 s, alvos da RNF-01 (≤ 2,0 s) e da RNF-04 (≥ 25 req/s) revistos; L1 agravado
+  - [x] Evidências refeitas (sessão 2): baseline 2,04 s → **1,68 s**, carga 219 ms → **202 ms**, e o trace com as três chamadas começando no mesmo instante → [trace-depois-paralelo.json](evidencias/trace-depois-paralelo.json)
 
 ---
 
@@ -307,4 +311,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | 2D: as 7 evidências do "depois", mais consultas por cotação e busca de dado pessoal, numa única sessão com 3 variações declaradas | `871a645` |
 | 2026-10-26 | Revisão da 2D: evidência 3 trocada por um curto-circuito que responde rápido (0,59 ms, variação 4); limitações para o README; achado do breaker com pouco tráfego | `397c940` |
 | 2026-10-26 | Estudo das decisões da 1B (D11 a D15), com preços da AWS, PTAX e salário com fonte | `5beb6d5` |
-| 2026-10-26 | 1B: SAD §5 a §8 escritos e §1 a §4 revisados com o que foi medido (SAD versão 1.0) | este commit |
+| 2026-10-26 | 1B: SAD §5 a §8 escritos e §1 a §4 revisados com o que foi medido (SAD versão 1.0) | `60f85cf` |
+| 2026-10-27 | Extra: agregação paralela (D16), com testes, decisão no SAD §4.8 e evidências 1, 2, 4 e 7 refeitas | este commit |

@@ -1,22 +1,22 @@
-# Evidencia 2: make test com a suite inteira
-# go clean -testcache && make test   (commit 9689381)
-# executado em 2026-10-26 19:37:49 -0300 - Guilherme
+# Evidencia 2: make test com a suite inteira (codigo com a agregacao paralela, D16)
+# go clean -testcache && make test   (commit 60f85cf + paralelizacao, commitada junto com esta evidencia)
+# executado em 2026-10-26 21:10:44 -0300 - Guilherme
 
 ## Saida do make test
 
 go test ./...
-ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/cmd/loadgen	4.928s
-ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/cmd/partner-mock	1.045s
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/cmd/loadgen	4.752s
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/cmd/partner-mock	0.985s
 ?   	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/cmd/quotation-api	[no test files]
 ?   	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/otelcheck	[no test files]
-ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/partner	3.376s
-ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/platform	2.011s
-ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/quotation	2.596s
-ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/quotecache	3.804s
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/partner	3.171s
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/platform	1.909s
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/quotation	2.448s
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/quotecache	3.524s
 
 make test exit code: 0
 
-## Lista de testes (go test -count=1 -v ./...), exit code: 0
+## Lista de testes de topo (go test -count=1 -v ./...), exit code: 0
 ## [original] = veio no repositorio (commit cbc3c1e); [novo] = escrito nesta entrega
 
 PASS: TestDefaultsReproduceTheScenarioWithNoArguments (0.00s) [original]
@@ -65,7 +65,7 @@ PASS: TestBreakerCountsATimeoutAsFailure (0.00s) [novo]
 PASS: TestBreakerIgnoresCancellationByTheCaller (0.00s) [novo]
 PASS: TestBreakerTreatsA4xxAsThePartnerBeingUp (0.00s) [novo]
 PASS: TestBreakerIsPerPartner (0.00s) [novo]
-PASS: TestQuoteReadsThePartnerResponse (0.00s) [original]
+PASS: TestQuoteReadsThePartnerResponse (0.01s) [original]
 PASS: TestQuoteIdentifiesThePartnerThatFailed (0.00s) [original]
 PASS: TestQuoteFailsOnUnreadableResponse (0.00s) [original]
 PASS: TestQuoteHonoursCancellation (0.00s) [original]
@@ -102,6 +102,8 @@ PASS: TestQuotesRejectsUnknownBroker (0.00s) [original]
 PASS: TestQuotesRejectsInvalidBody (0.00s) [original]
 PASS: TestQuotesResponds502WithTheNameOfThePartnerThatWentDown (0.00s) [original]
 PASS: TestHealthz (0.00s) [original]
+PASS: TestTheFallbackPathQuotesThePartnersAtTheSameTime (0.00s) [novo]
+PASS: TestTheParallelResponseIsTheSameWhoeverFinishesFirst (0.00s) [novo]
 PASS: TestNormalizeFillsDefaultsAndTidiesUp (0.00s) [original]
 PASS: TestNormalizeRejectsIncompleteRequest (0.00s) [original]
 PASS: TestQuoteAggregatesTheThreePartnersSortedByPremium (0.00s) [original]
@@ -120,5 +122,13 @@ PASS: TestRedisKeepsTheQuoteForAtMostTheMaxAge (0.00s) [novo]
 PASS: TestRedisDownIsReportedAndLooksLikeAnEmptyCache (0.02s) [novo]
 PASS: TestAHungRedisCostsAtMostTheTimeout (0.10s) [novo]
 
-## Resumo
-PASS: 100   FAIL: 0   SKIP: 0
+## Resumo (testes de topo, sem contar subtestes)
+PASS: 102   FAIL: 0   SKIP: 0
+originais: 64
+
+## Detector de corrida (go test -race), no conteiner golang:1.25 porque o Windows nao tem compilador C
+docker run --rm -v "$(pwd):/src" -w /src golang:1.25 go test -race -count=1 ./internal/...
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/partner	1.101s
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/platform	1.033s
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/quotation	1.171s
+ok  	github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/quotecache	1.142s

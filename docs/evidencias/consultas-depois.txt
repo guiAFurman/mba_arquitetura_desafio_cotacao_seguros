@@ -1,6 +1,5 @@
-# Consultas compradas no depois (Prometheus, instantaneo em 22:39:00 UTC)
-# A execucao padrao de reproduce-depois.txt foi de 22:38:26 a 22:38:37 UTC; a variacao 1 so comecou as 22:39:01.
-# Lendo os contadores em 22:39:00, eles contem so a execucao padrao (mesma carga do antes).
+# Consultas compradas no depois, com a agregacao paralela (Prometheus, instantaneo em 00:10:00 UTC de 2026-10-27)
+# A execucao padrao de reproduce-depois.txt foi de 00:09:17 a 00:09:26 UTC; nenhuma outra carga rodou ate a consulta.
 
 ## sum by (server_address, http_response_status_code) (http_client_request_duration_seconds_count)
   {"http_response_status_code":"200","server_address":"partner-degrading"}  5

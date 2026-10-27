@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/partner"
@@ -92,21 +93,40 @@ func (e *NoPartnerError) Error() string { return "no partner insurer available" 
 // QuoteWithFallback agrega com cache por parceira e resposta parcial (docs/sad.md §4.6). Para cada
 // parceira: cotacao fresca do cache; senao a parceira, pelo breaker; se ela falhar, a cotacao vencida
 // do cache; senao, a parceira entra em missing_partners com o motivo.
+//
+// As tres parceiras sao consultadas ao mesmo tempo (docs/sad.md §4.8, D16): a cotacao leva o tempo
+// da mais lenta, e nao a soma das tres. Service.Quote continua em serie, como o teste original exige.
 func (s *Service) QuoteWithFallback(ctx context.Context, tenant string, request Request) (Response, error) {
 	start := time.Now()
 	forPartner := partnerRequest{Broker: tenant, Request: request}
 	keys, cached, cache := s.lookup(ctx, tenant, request)
 
-	response := Response{TenantID: tenant, Quotes: make([]PresentedQuote, 0, len(s.partners))}
+	type outcome struct {
+		quote   PresentedQuote
+		missing *MissingPartner
+	}
+	outcomes := make([]outcome, len(s.partners))
+	var wg sync.WaitGroup
 	for i, p := range s.partners {
-		quote, missing := s.quotePartner(ctx, p, forPartner, keys[i], cached[i], cache)
-		if missing != nil {
-			response.MissingPartners = append(response.MissingPartners, *missing)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			quote, missing := s.quotePartner(ctx, p, forPartner, keys[i], cached[i], cache)
+			outcomes[i] = outcome{quote: quote, missing: missing}
+		}()
+	}
+	wg.Wait()
+
+	// Montada na ordem das parceiras, para a resposta nao depender de quem terminou primeiro.
+	response := Response{TenantID: tenant, Quotes: make([]PresentedQuote, 0, len(s.partners))}
+	for _, o := range outcomes {
+		if o.missing != nil {
+			response.MissingPartners = append(response.MissingPartners, *o.missing)
 			response.Degraded = true
 			continue
 		}
-		response.Quotes = append(response.Quotes, quote)
-		response.Degraded = response.Degraded || quote.Stale
+		response.Quotes = append(response.Quotes, o.quote)
+		response.Degraded = response.Degraded || o.quote.Stale
 	}
 
 	markResponse(ctx, tenant, response)

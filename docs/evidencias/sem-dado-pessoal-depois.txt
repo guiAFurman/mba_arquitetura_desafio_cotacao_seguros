@@ -1,22 +1,19 @@
-# Busca por dado pessoal nos dados reais da sessao do depois (SAD 4.5)
-# Em 2026-10-26 22:49:35 UTC. CPFs e placas usados nas cargas desta sessao:
-#   loadgen: documentos 12345678900..12345679099, placas LDG0000..LDG0199; sondas: 99900000001.., EVD0001..
+# Busca por dado pessoal nos dados reais da sessao do depois com a agregacao paralela (SAD 4.5)
+# Em 2026-10-27 00:11:48 UTC. CPFs e placas usados pela carga padrao: documentos 12345678900..12345678904, placas LDG0000..LDG0004
 
 ## Jaeger: todas as traces da ultima hora
 curl -s --get 'localhost:16686/api/traces' --data-urlencode 'service=quotation-api' --data-urlencode 'limit=5000' --data-urlencode 'lookback=1h'
-traces exportadas: 1041
-ocorrencias de CPF do loadgen (12345678[89]xx / 12345679[0]xx): 0
-ocorrencias de CPF das sondas (999000000xx):                  0
-ocorrencias de placa (LDGnnnn ou EVDnnnn):                     0
-ocorrencias de quote_id (partner-*-hex16):                     0
+traces exportadas: 210
+ocorrencias de CPF (1234567890x):            0
+ocorrencias de placa (LDGnnnn):              0
+ocorrencias de quote_id (partner-*-hex16):   0
 
-## Prometheus: todas as series de negocio e HTTP desde 22:30 UTC
-curl -s --get localhost:9090/api/v1/series --data-urlencode 'match[]={__name__=~"partner_.*|quote_.*|http_.*"}'
-series: 409
+## Prometheus: todas as series de negocio e HTTP desde 00:00 UTC
+series: 268
 series com CPF, placa ou quote_id: 0
 valores dos rotulos de negocio:
   partner: ["partner-degrading","partner-flaky","partner-slow"]
   result: ["hit","miss"]
-  outcome: ["circuit_open","error","success","timeout"]
-  from: ["closed","half-open","open"]
-  to: ["closed","half-open","open"]
+  outcome: ["error","success"]
+  from: ["closed","open"]
+  to: ["half-open","open"]

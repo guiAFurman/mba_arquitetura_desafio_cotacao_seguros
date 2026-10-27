@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ var (
 
 // memoryCache e o Redis em memoria, para testar a politica sem rede.
 type memoryCache struct {
+	mu      sync.Mutex
 	entries map[string]*quotecache.Entry
 	down    bool
 	calls   int
@@ -29,6 +31,8 @@ type memoryCache struct {
 func newMemoryCache() *memoryCache { return &memoryCache{entries: map[string]*quotecache.Entry{}} }
 
 func (m *memoryCache) Lookup(_ context.Context, keys []string) ([]*quotecache.Entry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.calls++
 	out := make([]*quotecache.Entry, len(keys))
 	if m.down {
@@ -41,6 +45,8 @@ func (m *memoryCache) Lookup(_ context.Context, keys []string) ([]*quotecache.En
 }
 
 func (m *memoryCache) Save(_ context.Context, key string, quote partner.Quote, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.calls++
 	if m.down {
 		return errors.New("redis down")
@@ -59,6 +65,7 @@ func (m *memoryCache) put(tenant, name string, premium int64, age time.Duration)
 
 // partners responde por parceira: erro configurado ou o premio do mapa.
 type partners struct {
+	mu       sync.Mutex
 	premiums map[string]int64
 	errs     map[string]error
 	calls    map[string]int
@@ -69,6 +76,8 @@ func newPartners() *partners {
 }
 
 func (p *partners) Quote(_ context.Context, partnerCfg platform.Partner, _ any) (partner.Quote, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.calls[partnerCfg.Name]++
 	if err := p.errs[partnerCfg.Name]; err != nil {
 		return partner.Quote{}, err

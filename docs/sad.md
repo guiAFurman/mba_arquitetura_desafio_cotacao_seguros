@@ -50,7 +50,7 @@ Ele é escrito para três leitores:
 
 ### 1.4 Decisões (escolhas deste documento, defendidas na §4)
 
-Timeout por parceira (D1), biblioteca e escopo do breaker (D2, D3), política de disparo (D4), granularidade do cache (D5), TTL e política de vencimento (D6), chave do cache (D7), estratégia de fallback (D8), onde o fallback vive no código (D9), contrato da resposta degradada (D10); e, nas seções 5 a 7, onde a plataforma roda (D11), RTO e RPO por classe de dado (D12), os alertas (D13), o breaker com pouco tráfego como limite conhecido (D14) e o caminho de mudança do TTL (D15). O estudo das opções está em [estudo-decisoes.md](estudo-decisoes.md) (D1 a D10) e em [estudo-decisoes-1b.md](estudo-decisoes-1b.md) (D11 a D15).
+Timeout por parceira (D1), biblioteca e escopo do breaker (D2, D3), política de disparo (D4), granularidade do cache (D5), TTL e política de vencimento (D6), chave do cache (D7), estratégia de fallback (D8), onde o fallback vive no código (D9), contrato da resposta degradada (D10); e, nas seções 5 a 7, onde a plataforma roda (D11), RTO e RPO por classe de dado (D12), os alertas (D13), o breaker com pouco tráfego como limite conhecido (D14) e o caminho de mudança do TTL (D15); e, como bônus, a agregação paralela (D16, §4.8). O estudo das opções está em [estudo-decisoes.md](estudo-decisoes.md) (D1 a D10) e em [estudo-decisoes-1b.md](estudo-decisoes-1b.md) (D11 a D15).
 
 ### 1.5 Pressupostos
 
@@ -145,7 +145,7 @@ flowchart LR
   corretor(["Corretora<br/><i>pessoa</i>"]):::person
 
   subgraph prumo["Prumo Cota"]
-    api["quotation-api<br/><i>contêiner · Go 1.25</i><br/>timeout + circuit breaker por parceira,<br/>cache por parceira, resposta parcial"]:::container
+    api["quotation-api<br/><i>contêiner · Go 1.25</i><br/>timeout + circuit breaker por parceira,<br/>cache por parceira, resposta parcial,<br/>as 3 parceiras em paralelo"]:::container
     redis[("redis<br/><i>contêiner · Redis 7</i><br/>cache de cotações por parceira")]:::container
     otel["otel-collector<br/><i>contêiner · OTel Collector</i>"]:::container
     jaeger["jaeger<br/><i>contêiner · Jaeger all-in-one</i>"]:::container
@@ -176,6 +176,7 @@ flowchart LR
 | **Acrescenta** | circuit breaker por parceira (gobreaker v2) | `internal/partner/breaker.go` |
 | **Acrescenta** | cache por parceira em Redis | pacote novo `internal/quotecache/` (`key.go`, `redis.go`) |
 | **Acrescenta** | resposta parcial e campos de degradação no contrato | `internal/quotation/service.go`, `internal/quotation/request.go`, `internal/quotation/handler.go` |
+| **Acrescenta** | agregação paralela no caminho com fallback (bônus, §4.8) | `internal/quotation/service.go` |
 | **Acrescenta** | métricas e marcações de trace de negócio | `internal/partner/metrics.go`, `internal/quotation/telemetry.go` |
 | **Muda de papel** | o `redis` deixa de ser um contêiner ocioso e passa a ser dependência da API (não obrigatória: sem ele, a API funciona sem cache) | `docker-compose.yml`, `cmd/quotation-api/main.go` |
 | **Muda de papel** | a resposta deixa de ser tudo-ou-nada: 502 só sai do caminho antigo, que fica preservado para os testes originais | `internal/quotation/service.go` |
@@ -210,10 +211,10 @@ O "hoje" das linhas RNF-01, RNF-02, RNF-03 e RNF-04 foi medido com `make down &&
 
 | ID | Requisito | Métrica | Hoje | Alvo | Como medir | Por que este número |
 |---|---|---|---|---|---|---|
-| RNF-01 | Latência da cotação sob carga | p95 do `POST /quotes`, fase de carga | **8,01 s** | **≤ 3,0 s** | relatório do `make reproduce`; em gráfico: `histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{http_route="/quotes"}[5m])))` | É o **teto estrutural** da agregação em série com os timeouts da §4.1: 2,0 + 0,5 + 0,5 s. Nenhuma requisição deveria passar disso, com ou sem cache. |
+| RNF-01 | Latência da cotação sob carga | p95 do `POST /quotes`, fase de carga | **8,01 s** | **≤ 2,0 s** | relatório do `make reproduce`; em gráfico: `histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{http_route="/quotes"}[5m])))` | É o **teto estrutural** da agregação paralela (§4.8, D16): a cotação espera a parceira mais lenta, e o maior timeout da §4.1 é 2,0 s. Em série seria a soma, 2,0 + 0,5 + 0,5 = 3,0 s. Nenhuma requisição deveria passar disso, com ou sem cache. |
 | RNF-02 | Cotações entregues | fração de respostas **200** (completas ou degradadas) na fase de carga | **60%** (120 de 200) | **≥ 99%** | relatório do `make reproduce` (`success`) | Com resposta parcial, só falha quando as três parceiras falham juntas e não há cache. A `partner-slow` nunca falha em repouso (P2), então esse caso é raro. |
 | RNF-03 | Consultas compradas por cotação entregue | `sum(http_client_request_duration_seconds_count) / sum(http_server_request_duration_seconds_count{http_route="/quotes", http_response_status_code="200"})` | **4,36** (545 consultas para 125 entregues; [evidencias/consultas-antes.txt](evidencias/consultas-antes.txt)) | **≤ 1,8** em produção | consulta PromQL ao lado, no fim de cada execução | 3 consultas × (1 − 40% de hit rate do P1) = 1,8. O "hoje" acima de 3 é o desperdício do tudo-ou-nada: as consultas feitas antes de uma falha são pagas e jogadas fora. |
-| RNF-04 | Vazão sob 50 em voo | requisições por segundo na fase de carga | **8,0 req/s** | **≥ 16 req/s** | relatório do `make reproduce` (`throughput`) | Lei de Little com 50 em voo e o teto de 3,0 s da RNF-01: 50 ÷ 3,0 ≈ 16,7 req/s. |
+| RNF-04 | Vazão sob 50 em voo | requisições por segundo na fase de carga | **8,0 req/s** | **≥ 25 req/s** | relatório do `make reproduce` (`throughput`) | Lei de Little com 50 em voo e o teto de 2,0 s da RNF-01: 50 ÷ 2,0 = 25 req/s. |
 | RNF-05 | Custo de uma parceira com circuito aberto | chamadas HTTP feitas a uma parceira enquanto o circuito dela está aberto | não existe breaker | **0** | trace da requisição curto-circuitada **sem** span `HTTP POST` para aquela parceira (evidência 3 da Entrega 2) | Aberto quer dizer que a chamada não sai (enunciado, Entrega 2 §1). Uma chamada feita e descartada não economiza os R$ 0,04 nem o tempo. |
 | RNF-06 | Isolamento entre corretoras | respostas servidas do cache a uma corretora diferente da que gerou a entrada | 0 (não há cache) | **0**, sempre | teste determinístico do RF-09; inspeção do formato da chave (§4.3) | R5: uma resposta cruzada é incidente de dados pessoais com dever de notificação à ANPD. Não existe tolerância. |
 | RNF-07 | Prazo máximo de guarda no cache | maior TTL restante de uma chave `quote:*` no Redis | não há cache | **≤ 86.400 s** (24 h) | `redis-cli --scan --pattern 'quote:*'` seguido de `TTL` em cada chave | P4 e LGPD: nada fica guardado além do teto comercial. O descarte é feito pelo próprio Redis, não por rotina manual. |
@@ -224,10 +225,10 @@ O "depois" foi medido com o PoC completo, com a mesma carga padrão ([evidencias
 
 | ID | Hoje | Depois | Alvo | Atingido? | Evidência |
 |---|---|---|---|---|---|
-| RNF-01 | 8,01 s | **219 ms** | ≤ 3,0 s | sim | [reproduce-depois.txt](evidencias/reproduce-depois.txt) |
+| RNF-01 | 8,01 s | **202 ms** | ≤ 2,0 s | sim | [reproduce-depois.txt](evidencias/reproduce-depois.txt) |
 | RNF-02 | 60% | **100%** | ≥ 99% | sim | [reproduce-depois.txt](evidencias/reproduce-depois.txt) |
 | RNF-03 | 4,36 | **0,27** nesta carga | ≤ 1,8 em produção | sim, mas o 0,27 vem de uma carga que repete 5 cotações (91% de acerto); em produção o valor esperado é o do P1, 1,8 | [consultas-depois.txt](evidencias/consultas-depois.txt) |
-| RNF-04 | 8,0 req/s | **695 req/s** | ≥ 16 req/s | sim; o laço fechado do gerador acelera quando a latência cai (roteiro §7) | [reproduce-depois.txt](evidencias/reproduce-depois.txt) |
+| RNF-04 | 8,0 req/s | **730 req/s** | ≥ 25 req/s | sim; o laço fechado do gerador acelera quando a latência cai (roteiro §7) | [reproduce-depois.txt](evidencias/reproduce-depois.txt) |
 | RNF-05 | não existia | **0** chamadas | 0 | sim: nenhum `HTTP POST` para as parceiras curto-circuitadas | [trace-depois-breaker-aberto-rapido.json](evidencias/trace-depois-breaker-aberto-rapido.json) |
 | RNF-06 | 0 (sem cache) | **0** | 0 | sim | `TestOneBrokerNeverReceivesTheCachedQuoteOfAnother`, em [make-test.txt](evidencias/make-test.txt) |
 | RNF-07 | sem cache | **24 h** | ≤ 24 h | sim | `TestRedisKeepsTheQuoteForAtMostTheMaxAge`, em [make-test.txt](evidencias/make-test.txt) |
@@ -251,7 +252,7 @@ Cada decisão está no formato **contexto → opções → escolha → consequê
 | `partner-slow` | 1700 ms | 2000 ms | **2000 ms** | a parceira ficar ≥ 300 ms mais lenta que o normal |
 | `partner-flaky` | 200 ms | 500 ms | **500 ms** | idem |
 | `partner-degrading` | 160 ms | 460 ms | **500 ms** | a partir de **7** chamadas simultâneas (120 + 40 + 300 × 2 = 760 ms) |
-| **Soma em série** | | | **3000 ms** | teto estrutural da RNF-01 |
+| **Teto da cotação** | | | **2000 ms** | com a agregação paralela (§4.8), o maior dos três; em série seria a soma, 3000 ms. É o teto estrutural da RNF-01 |
 
 **O estouro conta como falha para o breaker.** Cancelamento pelo **cliente** (a corretora desistiu da requisição) **não** conta: não é a parceira que falhou.
 
@@ -514,7 +515,7 @@ flowchart TB
 
   subgraph api["quotation-api (contêiner · Go 1.25)"]
     handler["API HTTP<br/><i>internal/quotation/handler.go</i><br/>valida X-Tenant-Id e corpo;<br/>escolhe 200, 400, 403 ou 503"]:::existing
-    service["Agregador com fallback<br/><i>internal/quotation/service.go</i><br/>QuoteWithFallback:<br/>consulta as 3, monta resposta parcial,<br/>ordena por prêmio"]:::existing
+    service["Agregador com fallback<br/><i>internal/quotation/service.go</i><br/>QuoteWithFallback:<br/>consulta as 3 em paralelo, monta resposta parcial,<br/>ordena por prêmio"]:::existing
     cache["Cache de cotações<br/><i>internal/quotecache/</i><br/>chave quote:v1:tenant:partner:hmac;<br/>fresca 1 h, vencida até 24 h"]:::component
     breaker["Circuit breaker por parceira<br/><i>internal/partner/breaker.go</i><br/>gobreaker v2 · ≥50% em ≥10 req,<br/>janela 30 s, 15 s aberto, 2 de teste"]:::component
     client["Cliente de parceira<br/><i>internal/partner/client.go</i><br/>timeout por parceira:<br/>2000 / 500 / 500 ms"]:::existing
@@ -551,7 +552,7 @@ flowchart TB
 3. Chama a parceira pelo breaker, com o timeout dela. Sucesso → usa (`source: partner`) e grava no cache.
 4. Falhou (timeout ou erro)? → há cotação vencida? → usa, com `stale: true`. Senão → `missing_partners` com `timeout` ou `partner_error`.
 
-Depois das três: se há ao menos uma cotação, responde **200** ordenado por prêmio (com `degraded` quando faltou algo); se não há nenhuma, **503** (RF-08).
+As três parceiras seguem esse fluxo **ao mesmo tempo** (§4.8, D16). Depois das três: se há ao menos uma cotação, responde **200** ordenado por prêmio (com `degraded` quando faltou algo); se não há nenhuma, **503** (RF-08).
 
 ### 4.7 Limites conhecidos
 
@@ -570,7 +571,23 @@ Um quinto limite apareceu medindo (D14):
 |---|---|---|---|
 | **L5** | **Com pouco tráfego, o breaker quase não abre.** A janela de 30 s precisa de no mínimo 10 chamadas, e a proporção de falha só é avaliada dentro dela. | Horário de pouco movimento: na 2D, uma cotação a cada ~3 s juntou ~10 chamadas por janela, e a `partner-flaky` ficou abaixo de 50% de falha (15 em 40); o circuito não abriu ([evidencias/variacao-curto-circuito-rapido.txt](evidencias/variacao-curto-circuito-rapido.txt)). Em produção (P3) cada janela junta ~100 chamadas. | Nesses horários, uma parceira ruim continua sendo chamada: a cotação sai com ela em `missing_partners` (`partner_error` ou `timeout`) e a consulta é paga, em vez de curto-circuitada. A janela deslizante (`BucketPeriod` do gobreaker v2.4.0) é a alternativa estudada e não adotada. |
 
+A agregação paralela (§4.8) **agrava o L1**: em série, a `partner-degrading` só recebia a chamada depois da `partner-slow` (~1,7 s depois), o que espalhava as chamadas no tempo; em paralelo, ela recebe a chamada no mesmo instante em que a requisição chega, e a concorrência nela passa a ser a da própria entrada.
+
 Mais um ponto que vale citar, e que não é código desta entrega (enunciado, "Fora de escopo"): duas requisições concorrentes da mesma corretora para o mesmo risco, uma servida de cache e outra da parceira, podem devolver **dois prêmios diferentes para o mesmo risco no mesmo minuto**, se a parceira tiver mudado o preço desde a gravação. Os dois são preços reais e rastreáveis; nenhum é inventado.
+
+### 4.8 Agregação paralela (D16, bônus)
+
+**Contexto.** Em série, a cotação leva a **soma** das três parceiras: no "antes", 1701 + 201 + 6149 ms no trace mais lento ([evidencias/antes.md](evidencias/antes.md), evidência 3). Com cache e breaker, a soma só pesa quando há *miss*: a cotação nova espera a `partner-slow` (~1,7 s) e depois as outras duas. O teste original `TestQuoteCallsThePartnersSerially` exige que `Service.Quote` continue em série (R9). O enunciado deixa a paralelização como bônus e pede que, se implementada, seja tratada como decisão, porque muda o p95.
+
+**Opções.** (a) manter em série; (b) consultar as três ao mesmo tempo, no caminho com fallback; (c) consultar em paralelo com um teto de tempo para a cotação inteira, devolvendo o que chegou até ali.
+
+**Escolha: (b).** `Service.QuoteWithFallback` dispara as três parceiras ao mesmo tempo, espera as três e monta a resposta **na ordem das parceiras**, para que ela não dependa de quem terminou primeiro. `Service.Quote` continua em série. A leitura do cache continua sendo um único `MGET`, antes das chamadas.
+
+**Defesa.** A cotação passa a levar o tempo da parceira **mais lenta**, e não a soma. O teto estrutural cai de 3,0 s para 2,0 s (o maior timeout da §4.1), e os alvos da RNF-01 e da RNF-04 foram revistos com ele. Medido com a carga padrão ([evidencias/depois.md](evidencias/depois.md)): o p95 do baseline, em que as 5 primeiras cotações vão às parceiras, cai de 2,04 s (em série, [evidencias/reproduce-depois-serie.txt](evidencias/reproduce-depois-serie.txt)) para **1,68 s**; no trace de uma cotação nova, as três chamadas começam no mesmo instante e a cotação leva 1,63 s, o tempo da `partner-slow` ([evidencias/trace-depois-paralelo.json](evidencias/trace-depois-paralelo.json)). O número de consultas compradas não muda: 57 para 210 cotações nas duas execuções.
+
+**Descartadas.** (a) mantém a soma, que é exatamente o que o "antes" mostrou como causa da latência. (c) acrescenta um terceiro prazo além dos timeouts e da janela do breaker: os timeouts por parceira já limitam a cotação a 2,0 s, e um teto menor descartaria respostas que a parceira ainda daria dentro do prazo dela, pagas e jogadas fora.
+
+**Consequências ruins.** A `partner-degrading` deixa de receber as chamadas espaçadas pela `partner-slow` e passa a recebê-las no ritmo da entrada, o que agrava o L1 (§4.7). Cada requisição passa a abrir três chamadas ao mesmo tempo, em vez de uma por vez. O código tem concorrência: o teste `TestTheFallbackPathQuotesThePartnersAtTheSameTime` prova que as três ficam em voo juntas, `TestTheParallelResponseIsTheSameWhoeverFinishesFirst` prova que a resposta não depende da ordem de chegada, e a suíte passa no detector de corrida (`go test -race`, [evidencias/make-test.txt](evidencias/make-test.txt)).
 
 ---
 
@@ -585,13 +602,14 @@ Mais um ponto que vale citar, e que não é código desta entrega (enunciado, "F
 | Chave do cache (D7) | `internal/quotecache/key.go` | `crypto/hmac` | `CACHE_KEY_SECRET` | `internal/quotecache/quotecache_test.go` |
 | Cache em Redis (D5, D6) | `internal/quotecache/redis.go` | `github.com/redis/go-redis/v9` v9.22.0 | `REDIS_ADDR`, `REDIS_TIMEOUT`, `CACHE_FRESH_TTL`, `CACHE_MAX_AGE` | `internal/quotecache/quotecache_test.go` (com `github.com/alicebob/miniredis/v2`) |
 | Resposta parcial e contrato (D8 a D10) | `internal/quotation/service.go`, `internal/quotation/request.go`, `internal/quotation/handler.go` | — | — | `internal/quotation/fallback_test.go` |
+| Agregação paralela (D16) | `internal/quotation/service.go` | `sync` | — | `internal/quotation/parallel_test.go` |
 | Métricas e marcações de trace (§4.5) | `internal/partner/metrics.go`, `internal/quotation/telemetry.go` | OpenTelemetry (SDK do starter) | — | `internal/partner/metrics_test.go`, `internal/quotation/telemetry_test.go` |
 | Valores padrão e validação | `internal/platform/config.go` | — | todas as acima | `internal/platform/config_resilience_test.go` |
 | Ligação de tudo | `cmd/quotation-api/main.go`, `docker-compose.yml` | — | — | `make reproduce` ([evidencias/depois.md](evidencias/depois.md)) |
 
 **Por que esta biblioteca de breaker:** expõe os três estados como constantes e o callback de transição que vira métrica sem código extra (§4.2, D2). **Por que este cliente Redis:** é o cliente oficial do Redis para Go e permite limitar cada operação pelo contexto, o que garantiu o teto de 100 ms (§4.3).
 
-**Como se testa sem depender de sorte**, no padrão do `cmd/partner-mock/feasibility_test.go`: o teste do breaker usa as 60 primeiras respostas **medidas** da `partner-flaky` (smoke §2.2) e prova que o circuito abre na requisição 12 e que, aberto, a parceira não é chamada; o do cache usa o relógio do miniredis para avançar 24 h; os do fallback usam relógio fixo e cache em memória. Nenhum usa `sleep`. A suíte inteira passa: 100 testes, 64 originais e 36 novos ([evidencias/make-test.txt](evidencias/make-test.txt)).
+**Como se testa sem depender de sorte**, no padrão do `cmd/partner-mock/feasibility_test.go`: o teste do breaker usa as 60 primeiras respostas **medidas** da `partner-flaky` (smoke §2.2) e prova que o circuito abre na requisição 12 e que, aberto, a parceira não é chamada; o do cache usa o relógio do miniredis para avançar 24 h; os do fallback usam relógio fixo e cache em memória. Nenhum usa `sleep`. A suíte inteira passa, inclusive no detector de corrida: 102 testes, 64 originais e 38 novos ([evidencias/make-test.txt](evidencias/make-test.txt)).
 
 **O que fica como proposta, sem código:** o acervo de auditoria (§4.4, fora de escopo pelo enunciado), apagar o cache por corretora (§4.3), o breaker com estado compartilhado entre réplicas (L2) e a cópia da auditoria fora da região (§7).
 
