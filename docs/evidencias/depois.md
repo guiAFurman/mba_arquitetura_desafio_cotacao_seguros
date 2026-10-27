@@ -15,8 +15,8 @@ Cada evidência tem **comando ou consulta + artefato + legenda**. Os gráficos f
 |---|---|---|---|
 | **Sessão 2:** execução padrão | 2026-10-27, 00:09:17 a 00:09:26 | `make down && make reproduce` (10 de baseline, 200 com 50 em voo) | evidências 1, 4, 7, a conta de consultas e o trace da paralelização; **é a mesma carga do "antes"** |
 | Sessão 1: execução padrão | 2026-10-26, 22:38:26 a 22:38:37 | `make down && make reproduce` | as versões `-serie` das evidências 1, 4, 7 e da conta de consultas |
-| Sessão 1: variação declarada 1 | 22:39:01 a 22:39:17 | `make load ARGS="-distinct 200"` | complemento da evidência 3 |
-| Sessão 1: variação declarada 2 | 22:40:04 a 22:43:42 | uma cotação nova a cada 8 s, até os dois circuitos fecharem | completar o degrau da evidência 5 |
+| Sessão 1: variação declarada 1 | 22:39:01 a 22:39:17 | `make load ARGS="-distinct 200"` ([saída](variacao-distinct-200.txt)) | complemento da evidência 3 |
+| Sessão 1: variação declarada 2 | 22:40:04 a 22:43:42 | uma cotação nova a cada 8 s, até os dois circuitos fecharem ([registro das sondas e das transições](variacao-sondas.txt)) | completar o degrau da evidência 5 |
 | Sessão 1: variação declarada 3 | 22:45:43 a 22:46:34 | `make load ARGS="-tenant corretora-b -distinct 50 -concurrency 2 -requests 600 -baseline 0"` | evidência 6 |
 | Sessão 1: variação declarada 4 | 23:05:42 a 23:08:18 | 20 cotações novas em paralelo e, com os circuitos abertos, as mesmas 20 de novo | evidência 3 |
 

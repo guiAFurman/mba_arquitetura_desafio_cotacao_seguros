@@ -10,7 +10,7 @@
 | **Base** | repositório deste fork, branch `development`; enunciado em [enunciado.md](enunciado.md) |
 | **Evidências** | [evidencias/](evidencias/) — o "antes" está em [evidencias/antes.md](evidencias/antes.md) |
 
-**Convenção de rastreabilidade.** Todo caminho citado existe no repositório, salvo quando marcado como **[proposta]**, que é o que será criado na Entrega 2 (PoC) ou que fica só no papel. Números sem fonte não aparecem: cada um aponta para uma medição em `docs/evidencias/`, para o enunciado ou para o código.
+**Convenção de rastreabilidade.** Todo caminho citado existe no repositório, salvo quando marcado como **[proposta]**: o que este documento recomenda, mas o PoC não implementa. Números sem fonte não aparecem: cada um aponta para uma medição em `docs/evidencias/`, para o enunciado ou para o código.
 
 ---
 
@@ -191,7 +191,7 @@ flowchart LR
 
 ### 3.1 Funcionais
 
-Os RF-01 a RF-04 saem do contrato que já existe; os RF-05 a RF-09 são **criados por esta arquitetura**. Cada um é uma frase testável.
+Os RF-01 a RF-04 e o RF-10 saem do contrato que já existe; os RF-05 a RF-09 são **criados por esta arquitetura**. Cada um é uma frase testável; o RF-10 é a exceção que fica como proposta, porque o acervo de auditoria está fora do escopo do PoC.
 
 | ID | Requisito | Origem | Como se testa |
 |---|---|---|---|
