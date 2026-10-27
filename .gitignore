@@ -18,6 +18,12 @@ vendor/
 # Logs
 *.log
 
+# Instrucoes locais de assistente de IA: ferramenta de trabalho, nao parte da entrega
+AGENTS.md
+CLAUDE.md
+.claude/
+docs/progresso.md
+
 # Editores / SO
 .DS_Store
 .idea/

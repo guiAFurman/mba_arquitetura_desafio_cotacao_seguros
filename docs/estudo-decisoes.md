@@ -1,6 +1,6 @@
 # Estudo das decisões do 1A
 
-Material de apoio para escrever a §4 do SAD. Para cada decisão: o **contexto** (fatos com fonte), as **opções** com prós, contras e problemas, o que o **enunciado exige ou proíbe**, e uma **inclinação** preliminar. Nada aqui está decidido: as escolhas finais vão para a tabela "Decisões fixadas" do [progresso.md](progresso.md) e para o `docs/sad.md`.
+Material de apoio para escrever a §4 do SAD. Para cada decisão: o **contexto** (fatos com fonte), as **opções** com prós, contras e problemas, o que o **enunciado exige ou proíbe**, e uma **inclinação** preliminar. As escolhas finais estão no `docs/sad.md` (§4 e §5).
 
 Fontes citadas: [enunciado.md](enunciado.md), [guia-sad.md](guia-sad.md), [roteiro-cenario-de-falha.md](roteiro-cenario-de-falha.md), [smoke-test-factibilidade.md](smoke-test-factibilidade.md), [notas-leitura.md](notas-leitura.md) e o código.
 

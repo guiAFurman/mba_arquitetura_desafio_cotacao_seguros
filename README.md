@@ -101,4 +101,4 @@ Documentadas aqui, como pede o enunciado, em vez de contornadas em silêncio:
 
 ## Outros documentos
 
-[docs/progresso.md](docs/progresso.md) é o roteiro e o diário do trabalho. [docs/notas-leitura.md](docs/notas-leitura.md), [docs/estudo-decisoes.md](docs/estudo-decisoes.md) e [docs/estudo-decisoes-1b.md](docs/estudo-decisoes-1b.md) têm a leitura do código e o estudo das opções de cada decisão, com as fontes externas de preço e salário. [AGENTS.md](AGENTS.md) traz as regras de trabalho usadas com o assistente de IA.
+[docs/notas-leitura.md](docs/notas-leitura.md), [docs/estudo-decisoes.md](docs/estudo-decisoes.md) e [docs/estudo-decisoes-1b.md](docs/estudo-decisoes-1b.md) têm a leitura do código e o estudo das opções de cada decisão, com as fontes externas de preço e salário.
