@@ -153,7 +153,7 @@ Estudo das decisões D11 a D15, com as fontes externas: [estudo-decisoes-1b.md](
   - [x] **Custo de auditoria** no ano 1 (R$ 42) e no ano 5 (R$ 352), por **cotação apresentada**, com o erro de unidade de 1,67×
 - [x] Revisar as §1–4: versão 1.0, D11 a D15 em §1.4, **P5 a P7** em §1.5, **§3.3 hoje × depois medido**, **L5** em §4.7
 - [x] Coerência conferida: todo caminho, link, teste, métrica e variável citados existem; os números do SAD são os padrões do `config.go`
-- [ ] ⚠️ Tamanho: ~10 mil palavras (~20 páginas) mais 4 diagramas, no limite de cima da faixa do enunciado (10 a 20). Fazer uma passada procurando enchimento no fechamento
+- [x] Tamanho: a §4 foi enxugada de 5.064 para ~3.000 palavras (repetições com a §5.1 e a §6.2, exemplo JSON reduzido, L5 junto dos outros limites), sem tirar item exigido; o SAD ficou com ~9 mil palavras (~18 páginas) mais 4 diagramas, dentro da faixa do enunciado
 
 ### Decisões fixadas
 
@@ -313,4 +313,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Estudo das decisões da 1B (D11 a D15), com preços da AWS, PTAX e salário com fonte | `5beb6d5` |
 | 2026-10-26 | 1B: SAD §5 a §8 escritos e §1 a §4 revisados com o que foi medido (SAD versão 1.0) | `60f85cf` |
 | 2026-10-27 | Extra: agregação paralela (D16), com testes, decisão no SAD §4.8 e evidências 1, 2, 4 e 7 refeitas | `9357469` |
-| 2026-10-27 | Revisão geral antes do README: critérios de aceite conferidos um a um; referências de todos os documentos, testes, build, smoke e os 4 diagramas validados; duas frases do SAD que ainda descreviam o tempo em série corrigidas | este commit |
+| 2026-10-27 | Revisão geral antes do README: critérios de aceite conferidos um a um; referências de todos os documentos, testes, build, smoke e os 4 diagramas validados; duas frases do SAD que ainda descreviam o tempo em série corrigidas | `5377e2d` |
+| 2026-10-27 | SAD enxugado para ~18 páginas (§4 de 5.064 para ~3.000 palavras) sem tirar item exigido; corrigidos dois números desatualizados da §4 (teto de ~3 s e a contagem de traces da busca de dado pessoal) | este commit |

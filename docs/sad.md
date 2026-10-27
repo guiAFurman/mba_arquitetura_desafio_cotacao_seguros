@@ -237,267 +237,142 @@ O "depois" foi medido com o PoC completo, com a mesma carga padrão ([evidencias
 
 ## 4. Detalhamento da arquitetura
 
-Cada decisão está no formato **contexto → opções → escolha → consequências**. As opções foram estudadas em [estudo-decisoes.md](estudo-decisoes.md), que traz as tabelas completas de prós e contras.
+Cada decisão está no formato **contexto → opções → escolha → consequências**. As tabelas completas de prós e contras estão em [estudo-decisoes.md](estudo-decisoes.md). O mapa de cada decisão para o arquivo, a configuração e o teste está na §5.1.
 
 ### 4.1 Timeout por parceira (D1)
 
-**Contexto.** O `http.Client` em `internal/partner/client.go` tem `Timeout` zero: a API espera o que a parceira quiser. A `partner-degrading` nunca falha, ela afunda: 120 ms em repouso, +300 ms por chamada simultânea acima de 5, até +6000 ms (`docker-compose.yml`). No "antes", ela levou **6149 ms** em uma única chamada ([evidencias/antes.md](evidencias/antes.md)). Sem teto de espera, essa lentidão nunca vira sinal para o breaker.
+**Contexto.** O `http.Client` em `internal/partner/client.go` tinha `Timeout` zero. A `partner-degrading` nunca falha, ela afunda: +300 ms por chamada simultânea acima de 5, até +6000 ms. No "antes", levou **6149 ms** numa chamada ([evidencias/antes.md](evidencias/antes.md)). Sem teto de espera, essa lentidão nunca vira sinal para o breaker.
 
 **Opções.** (a) um timeout único de 2 s; (b) um timeout único abaixo de 1,7 s; (c) um timeout por parceira, derivado de uma regra.
 
-**Escolha: (c).** Regra: **latência máxima em repouso (P2) + 300 ms, arredondada para cima ao próximo múltiplo de 500 ms.**
+**Escolha: (c).** Regra: **latência máxima em repouso (P2) + 300 ms, arredondada para cima ao próximo múltiplo de 500 ms.** O estouro **conta como falha** para o breaker; o cancelamento pelo cliente (a corretora desistiu) não conta.
 
-| Parceira | Máxima em repouso (P2) | + 300 ms | **Timeout** | Estoura quando |
-|---|---|---|---|---|
-| `partner-slow` | 1700 ms | 2000 ms | **2000 ms** | a parceira ficar ≥ 300 ms mais lenta que o normal |
-| `partner-flaky` | 200 ms | 500 ms | **500 ms** | idem |
-| `partner-degrading` | 160 ms | 460 ms | **500 ms** | a partir de **7** chamadas simultâneas (120 + 40 + 300 × 2 = 760 ms) |
-| **Teto da cotação** | | | **2000 ms** | com a agregação paralela (§4.8), o maior dos três; em série seria a soma, 3000 ms. É o teto estrutural da RNF-01 |
+| Parceira | Máxima em repouso (P2) | **Timeout** | Estoura quando |
+|---|---|---|---|
+| `partner-slow` | 1700 ms | **2000 ms** | a parceira fica ≥ 300 ms mais lenta que o normal |
+| `partner-flaky` | 200 ms | **500 ms** | idem |
+| `partner-degrading` | 160 ms | **500 ms** | a partir de **7** chamadas simultâneas (120 + 40 + 300 × 2 = 760 ms) |
+| **Teto da cotação** | | **2000 ms** | o maior dos três, com a agregação paralela (§4.8); em série seria a soma, 3000 ms. É o teto da RNF-01 |
 
-**O estouro conta como falha para o breaker.** Cancelamento pelo **cliente** (a corretora desistiu da requisição) **não** conta: não é a parceira que falhou.
+O `http.Client` passa a ter `Timeout` de 2000 ms, o maior teto; cada chamada ainda corta no teto da sua parceira.
 
-**Como fica no código** (`internal/partner/client.go`): o `http.Client` deixa de ter `Timeout` zero e passa a ter o maior teto configurado (2000 ms), que nenhuma chamada ultrapassa; cada chamada ainda corta no teto da sua parceira, com `context.WithTimeout`. Os valores vêm de `PARTNER_TIMEOUTS` em `internal/platform/config.go`, e os padrões são os da tabela acima.
+**Descartadas.** (a) deixa a `partner-degrading` acumular até 11 chamadas simultâneas (≈ 1,9 s) antes de estourar: ela já estaria afundada quando o breaker passasse a enxergá-la. (b) mata a `partner-slow`, que leva de 1,5 a 1,7 s sempre: o breaker dela nunca mais fecharia.
 
-**Descartadas.** (a) deixa a `partner-degrading` acumular até 11 chamadas simultâneas antes de estourar (120 + 300 × 6 ≈ 1,9 s): ela já estaria afundada quando o breaker passasse a enxergá-la. Em série, ainda poria o teto da cotação em 6 s; com a agregação paralela (§4.8) o teto seria o mesmo, 2 s, e o argumento que sobra, e decide, é o da `partner-degrading`. (b) mata a `partner-slow` em 100% das chamadas, porque ela leva de 1,5 a 1,7 s sempre: o breaker dela abriria e nunca mais fecharia.
-
-**Consequências.**
-- Boa: a degradação da `partner-degrading` vira falha contável logo depois do joelho de 5 simultâneas; a cotação nunca passa de ~3 s.
-- Ruim: três números para manter, e todos dependem do P2. Se a latência real de uma parceira mudar, o timeout dela fica errado. A regra (e não os números) é o que se revisa.
-- Ruim: com a `partner-degrading` perto do limite de 7 simultâneas, o breaker dela tende a abrir e fechar com frequência. Isso precisa de alerta (§6).
+**Consequências ruins.** Três números para manter, todos dependentes do P2: o que se revisa é a regra. Perto de 7 simultâneas, o breaker da `partner-degrading` tende a abrir e fechar com frequência, o que pede alerta (§6.2).
 
 ### 4.2 Circuit breaker (D2, D3, D4)
 
-**Contexto.** O enunciado exige os três estados visíveis de fora e que **aberto signifique que a chamada não sai** (Entrega 2 §1). O `cmd/partner-mock/feasibility_test.go` já provou que, com os defaults, uma política de 50% de falha em janela de 10 abre na requisição **10** e volta a fechar **6** vezes em 210 requisições ([smoke-test-factibilidade.md](smoke-test-factibilidade.md) §2.1).
+**Contexto.** O enunciado exige os três estados visíveis de fora e que **aberto signifique que a chamada não sai**. O `cmd/partner-mock/feasibility_test.go` já provou que uma política de 50% de falha em janela de 10 abre e volta a fechar com os defaults ([smoke-test-factibilidade.md](smoke-test-factibilidade.md) §2.1).
 
-#### Biblioteca (D2)
+**Biblioteca (D2).** Opções: (a) `github.com/sony/gobreaker/v2`; (b) `failsafe-go`; (c) implementação própria. **Escolha: (a), v2.4.0.** Os três estados são constantes nomeadas (`StateClosed`, `StateHalfOpen`, `StateOpen`); `OnStateChange` vira a métrica de transição; `ReadyToTrip` permite a política por taxa; `IsSuccessful` e `IsExcluded` separam o que é falha (timeout, 5xx) do que não diz nada da parceira (4xx, cancelamento pelo cliente); e, aberto, `Execute` devolve `ErrOpenState` **sem executar** a chamada (RNF-05). **Descartadas:** (b) traz retry, bulkhead e rate limiter, fora de escopo; (c) reescreve o que o `feasibility_test.go` já simula. **Consequência ruim:** sem relógio injetável, a passagem de aberto para meio-aberto não tem teste unitário; ela é provada pela evidência do estado no tempo.
 
-**Opções.** (a) `github.com/sony/gobreaker/v2`; (b) `failsafe-go`; (c) implementação própria.
+**Escopo (D3).** Opções: (a) um breaker por parceira; (b) por par (parceira, corretora); (c) um global. **Escolha: (a).** A falha é do motor de precificação da seguradora, que é um só para todas as corretoras. **Descartadas:** (b) com centenas de corretoras, cada breaker teria pouco tráfego, e cada corretora pagaria as consultas até descobrir sozinha que a parceira caiu; (c) uma parceira afundada derrubaria as três. **Consequência ruim:** uma corretora pode abrir o circuito para todas (L4).
 
-**Escolha: (a) `sony/gobreaker` v2** (versão mais recente: v2.4.0). Os três estados são constantes nomeadas (`StateClosed`, `StateHalfOpen`, `StateOpen`); o callback `OnStateChange` dá a métrica de transição sem código extra; `ReadyToTrip` recebe os contadores e permite a política por taxa; `IsSuccessful` decide o que é falha (timeout e 5xx são; 4xx não é); e `IsExcluded` tira da conta o que não diz nada sobre a parceira (o cancelamento pelo cliente). Com o circuito aberto, `Execute` devolve `ErrOpenState` **sem executar** a função, o que garante que a chamada HTTP não sai (RNF-05).
-
-**Descartadas.** (b) traz retry, bulkhead e rate limiter, que são padrões fora de escopo, e a defesa ficaria mais longa sem ganho para este caso. (c) reescreve o que o próprio `feasibility_test.go` já simula e aumenta o código a defender.
-
-**Consequência ruim.** O gobreaker não aceita relógio injetado. O teste do breaker **abrindo** é determinístico (não depende de tempo), mas a passagem de aberto para meio-aberto depende do relógio real. O meio-aberto será provado pela evidência de gráfico do estado no tempo, não por teste unitário.
-
-#### Escopo (D3)
-
-**Opções.** (a) um breaker por parceira; (b) um por par (parceira, corretora); (c) um global.
-
-**Escolha: (a) um por parceira.** A falha é do **motor de precificação** da seguradora, que é um só para todas as corretoras. As condições comerciais mudam por corretora; a disponibilidade, não.
-
-**Descartadas.** (b) com centenas de corretoras em produção, cada breaker teria pouco tráfego e demoraria a juntar o mínimo de requisições; uma parceira fora do ar seria descoberta separadamente por cada corretora, e cada uma pagaria as consultas até o seu circuito abrir. (c) uma parceira afundada derrubaria as três.
-
-**Consequência ruim.** Uma corretora que gera muito tráfego ruim pode abrir o circuito para todas (limite L4, §4.7).
-
-#### Política e parâmetros (D4)
+**Política e parâmetros (D4):**
 
 | Parâmetro | Valor | Defesa |
 |---|---|---|
-| **Abre quando** | **≥ 50% de falha, com no mínimo 10 requisições** contadas | Validado pelo `feasibility_test.go`, que abre na requisição 10. Com o gobreaker, que só avalia o disparo depois de uma falha, abre na **requisição 12** (6 falhas em 12) sobre a mesma sequência da `partner-flaky`: preso pelo teste `TestBreakerOpensOnTheFlakySequenceAndStopsCallingThePartner` em `internal/partner/breaker_test.go`. Não abre no ruído normal de 40%. Por ser proporção e não ordem, resiste à concorrência: sob 34 simultâneas a rajada cai de 9 para 5 seguidas, e uma regra de "5 consecutivas" passaria a abrir só na requisição 104 (smoke §2.3). |
-| **Janela do estado fechado** (`Interval`) | **30 s** | Com o ritmo de produção do P3 (≈ 3,3 chamadas/s por parceira), 30 s juntam ≈ 100 chamadas, bem acima do mínimo de 10. Mais curta, poderia não juntar o mínimo; mais longa, falhas antigas pesariam no presente. |
-| **Tempo aberto** (`Timeout`) | **15 s** | Precisa ser maior que o intervalo de exportação de métricas (10 s, `internal/platform/telemetry.go`) para que o estado aberto apareça na série temporal. É também maior que o maior timeout (2 s): quando o meio-aberto testa, as chamadas que estavam em voo já terminaram e a `partner-degrading` já se esvaziou. Em produção (P3), 15 s aberto evitam ≈ 50 consultas pagas a uma parceira que está falhando. |
-| **Meio-aberto** (`MaxRequests`) | **2** requisições de teste; 2 sucessos fecham, 1 falha reabre | Com 40% de falha da `partner-flaky`, a chance de 2 sucessos seguidos é 36%; de 3, 21,6%. O smoke validou 2 sucessos com 6 voltas a fechado em 210 requisições, o que torna o ciclo completo observável. |
-| **O que conta como falha** | erro de rede, **timeout** (D1), HTTP ≥ 500, resposta ilegível | O que indica que a parceira não está saudável. |
-| **O que não conta** | cancelamento pelo cliente (excluído da conta, via `IsExcluded`); HTTP 4xx (conta como sucesso) | Cancelamento é decisão da corretora; 4xx indica pedido nosso inválido, não indisponibilidade da parceira. |
-
-**Comportamento observável de cada estado:**
+| **Abre quando** | **≥ 50% de falha, com no mínimo 10 requisições** | Validado pelo `feasibility_test.go`. Com o gobreaker, que só avalia o disparo depois de uma falha, abre na **requisição 12** da sequência medida da `partner-flaky` (`TestBreakerOpensOnTheFlakySequenceAndStopsCallingThePartner`), e não no ruído normal de 40%. Proporção resiste à concorrência: sob 34 simultâneas a rajada de 9 falhas seguidas cai para 5, e uma regra de "5 consecutivas" só abriria na requisição 104 (smoke §2.3). |
+| **Janela** (`Interval`) | **30 s** | Com o P3 (≈ 3,3 chamadas/s por parceira), junta ≈ 100 chamadas, bem acima do mínimo. Abaixo disso, ver L5. |
+| **Tempo aberto** (`Timeout`) | **15 s** | Maior que a exportação de métricas (10 s), para o estado aparecer na série, e que o maior timeout (2 s), para a `partner-degrading` se esvaziar antes do teste. Em produção, evita ≈ 50 consultas pagas por abertura. |
+| **Meio-aberto** (`MaxRequests`) | **2** de teste: 2 sucessos fecham, 1 falha reabre | Com 40% de falha, 2 sucessos seguidos têm 36% de chance (3, 21,6%); o smoke validou 2 com 6 voltas a fechado em 210 requisições. |
 
 | Estado | A parceira é chamada? | O que a corretora vê |
 |---|---|---|
-| **Fechado** | sim, com o timeout da §4.1 | resposta normal da parceira (`source: partner`) |
-| **Aberto** | **não** | cotação vencida do cache, se houver (`source: cache`, com idade); senão a parceira em `missing_partners` com `circuit_open` |
-| **Meio-aberto** | só as 2 requisições de teste; as demais seguem como no aberto | como no fechado, para as de teste |
+| **Fechado** | sim, com o timeout da §4.1 | a cotação da parceira (`source: partner`) |
+| **Aberto** | **não** | a cotação vencida do cache, se houver (`stale: true`); senão `missing_partners` com `circuit_open` |
+| **Meio-aberto** | só as 2 de teste; as demais, como no aberto | como no fechado, para as de teste |
 
 ### 4.3 Cache (D5, D6, D7)
 
-#### Granularidade (D5)
+**Granularidade (D5).** Opções: (a) uma entrada por parceira e risco; (b) uma entrada com a cotação agregada. **Escolha: (a).** Com a `partner-flaky` falhando 40% das vezes, um cache agregado só seria gravado quando as três respondessem. **Descartada:** (b) cerca de 40% das cotações nunca entrariam nele, e ele não sobreviveria a uma parceira fora por horas (§7.3). **Consequência ruim:** uma resposta pode misturar cotações de idades diferentes; por isso a idade vai **em cada cotação** (D10).
 
-**Opções.** (a) uma entrada por parceira e risco; (b) uma entrada por risco com a cotação agregada.
-
-**Escolha: (a) por parceira.** Com a `partner-flaky` falhando 40% das vezes, um cache agregado só seria gravado quando as três respondessem, e cerca de 40% das cotações nunca entrariam nele. Por parceira, as respostas boas entram sempre, e a cotação de uma parceira pode ser usada quando só ela falhar.
-
-**Consequências.** Boa: o cache sobrevive a uma parceira fora do ar por horas (cenário (b) da §7). Ruim: a mesma resposta pode misturar cotações de idades diferentes; por isso a idade vai **em cada cotação** (D10). São 3 leituras por requisição, feitas em um único `MGET`.
-
-#### TTL e política de vencimento (D6)
-
-**Opções.** (a) 300 s, o `valid_for_seconds` do mock; (b) entre 15 min e 1 h; (c) 24 h, o teto comercial.
-
-**Escolha: (b), com dois prazos.**
+**TTL e política de vencimento (D6).** Opções: (a) 300 s, o `valid_for_seconds` do mock; (b) entre 15 min e 1 h; (c) 24 h, o teto comercial. **Escolha: (b), com dois prazos:**
 
 | Prazo | Valor | O que acontece |
 |---|---|---|
-| **Fresca** | idade < **1 h** | servida normalmente, sem chamar a parceira (`source: cache`, `age_seconds`) |
-| **Vencida** | idade entre 1 h e 24 h | **só** é servida se a parceira falhar (erro, timeout ou circuito aberto); marcada com a idade; a resposta inteira sai com `degraded: true` |
-| **Descarte** | **24 h** | a entrada é gravada com `SET ... EX 86400`; o Redis a apaga sozinho (RNF-07) |
+| **Fresca** | idade < **1 h** | servida sem chamar a parceira (`source: cache`, `age_seconds`) |
+| **Vencida** | de 1 h a 24 h | **só** servida se a parceira falhar (erro, timeout ou circuito aberto), com `stale: true` e a idade; a resposta sai `degraded: true` |
+| **Descarte** | **24 h** | `SET ... EX 86400`: o Redis apaga sozinho (RNF-07, LGPD) |
 
-**Defesa do 1 h.** É a duração de uma conversa de venda, em que o corretor recota a mesma placa várias vezes (enunciado, "O cenário"). Esse é o P1: 40% de recotação **na mesma corretora** em até 1 h, que é o hit rate da §8. O 1 h fica bem abaixo do teto comercial de 24 h (R8), o que limita o risco de exibir preço que a seguradora já mudou.
+**Defesa.** 1 h é a conversa de venda em que o corretor recota a mesma placa (P1: 40% de recotação na mesma corretora em até 1 h, o hit rate da §8), bem abaixo do teto de 24 h (R8). Na falha, uma cotação de 3 h, marcada, é mais útil do que nenhuma, e a seguradora ainda a honra (P4). **Descartadas:** (a) pega só a recotação dentro de 5 minutos e reduz a economia da §8 a uma fração; (c) apresenta como normal uma cotação de quase um dia.
 
-**Defesa da vencida até 24 h.** Na falha, uma cotação de 3 h atrás, identificada como tal, é mais útil para a corretora do que nenhuma, e a seguradora ainda a honra (P4). Fora da falha, ela nunca é servida.
+**Invalidação antes da hora:** a **versão na chave** (`v1`, implementada): trocá-la faz o cache antigo deixar de ser lido, e o TTL limpa o resto em até 24 h; **apagar por corretora** **[proposta]**: o `tenant_id` é o terceiro segmento da chave, então `SCAN` com o padrão `quote:v1:{tenant_id}:*` seguido de `DEL` resolve. **Consequência ruim:** o TTL é a única invalidação automática (L3).
 
-**Descartadas.** (a) 300 s pega só a recotação dentro de 5 minutos e reduz a economia da §8 a uma fração; o enunciado deixa claro que esse é o TTL técnico do mock, não o de negócio. (c) 24 h apresenta como normal uma cotação de quase um dia, sem margem nenhuma até o teto.
-
-**Invalidação antes da hora:**
-
-| Mecanismo | Quando | Situação |
-|---|---|---|
-| TTL (fresca 1 h, descarte 24 h) | sempre | implementado |
-| **Versão na chave** (`v1`) | mudança do formato da cotação ou da tabela de preço | implementado: trocar a versão faz todo o cache antigo deixar de ser lido; o TTL limpa o resto em até 24 h |
-| Apagar por corretora | corretora deixa a plataforma ou pede eliminação de dados | **[proposta]**: o `tenant_id` é o terceiro segmento da chave, então `SCAN` com o padrão `quote:v1:{tenant_id}:*` seguido de `DEL` resolve, sem código novo na API |
-
-**Consequência ruim.** O TTL é a única invalidação automática: se uma seguradora mudar o preço no meio da hora, a corretora vê o preço antigo até a entrada vencer (limite L3, §4.7).
-
-#### Chave (D7)
-
-**A chave, por extenso:**
+**Chave (D7), por extenso:**
 
 ```text
 quote:v1:{tenant_id}:{partner}:{hmac}
 ```
 
-| Segmento | Conteúdo | Exemplo |
-|---|---|---|
-| `quote` | espaço de nomes | `quote` |
-| `v1` | versão do formato (invalidação em massa) | `v1` |
-| `{tenant_id}` | a corretora, lida do cabeçalho `X-Tenant-Id` **já validado** contra `TENANTS` | `corretora-a` |
-| `{partner}` | o nome da parceira, como em `PARTNER_ENDPOINTS` | `partner-flaky` |
-| `{hmac}` | HMAC-SHA256, em hexadecimal, dos campos do risco **depois** de `Request.Normalize()`, separados por `\|`: `driver.document`, `driver.birth_year`, `vehicle.plate`, `vehicle.model`, `vehicle.year`, `vehicle.value_cents`, `coverage` | `9f2c…` (64 caracteres) |
+| Segmento | Conteúdo |
+|---|---|
+| `quote:v1` | espaço de nomes e versão do formato |
+| `{tenant_id}` | a corretora, do cabeçalho `X-Tenant-Id` **já validado** contra `TENANTS` |
+| `{partner}` | o nome da parceira, como em `PARTNER_ENDPOINTS` |
+| `{hmac}` | HMAC-SHA256, em hexadecimal, dos campos do risco **depois** de `Request.Normalize()`, separados por `\|`: `driver.document`, `driver.birth_year`, `vehicle.plate`, `vehicle.model`, `vehicle.year`, `vehicle.value_cents`, `coverage` |
 
-Exemplo completo: `quote:v1:corretora-a:partner-flaky:9f2c…e41a`.
+Exemplo: `quote:v1:corretora-a:partner-flaky:9f2c…e41a`. O **`tenant_id`** é o contrato de isolamento (R5, RNF-06) e vem do **cabeçalho**, porque o corpo não tem a corretora; o próprio mock cobra prêmios diferentes da mesma placa para corretoras diferentes (`cmd/partner-mock/behavior.go`). **Todos os campos que mudam o prêmio** entram, não só a placa. O **HMAC** esconde CPF e placa de quem lista as chaves do Redis; um SHA-256 simples seria reversível por força bruta, porque o CPF tem poucos dígitos. O valor guardado é a cotação da parceira como ela chegou, mais `cached_at`: sem CPF nem placa.
 
-**Por que cada parte.**
-- **`tenant_id` na chave** é o contrato de isolamento (R5, RNF-06). Ele vem do **cabeçalho**, não do corpo: o corpo não tem a corretora (enunciado, "Dicas finais"). O próprio mock confirma a necessidade: o prêmio é um hash do corpo enviado à parceira, que inclui a corretora (`cmd/partner-mock/behavior.go`), então a mesma placa custa diferente para corretoras diferentes.
-- **Todos os campos que mudam o prêmio**, não só a placa: dois motoristas com o mesmo carro, ou o mesmo motorista com outra cobertura, são riscos diferentes.
-- **Normalizados** por `Request.Normalize()` (placa em maiúsculas, espaços removidos, cobertura padrão): `abc1d23` e `ABC1D23` são o mesmo risco.
-- **HMAC em vez de texto aberto:** CPF e placa não aparecem em nenhuma ferramenta que liste chaves do Redis. Um SHA-256 simples seria reversível por força bruta, porque o CPF tem poucos dígitos; o HMAC com um segredo da plataforma não é. O segredo vem de variável de ambiente.
-
-**Valor da entrada:** a cotação da parceira como ela chegou (`partner`, `quote_id`, `premium_cents`, `currency`, `coverage_cents`, `valid_for_seconds`) mais `cached_at`. Não contém CPF nem placa.
-
-**Se o Redis cair:** a leitura é tratada como *miss* e a gravação é ignorada. A cotação continua funcionando, só sem cache (cenário (a) da §7). Cada operação no Redis tem teto de **100 ms** (`REDIS_TIMEOUT`), sem nova tentativa: um quinto do menor timeout de parceira (500 ms, §4.1). O cache nunca pode custar mais que a consulta que ele evita. Se a leitura falhar, a mesma cotação **não tenta gravar** depois: com o Redis fora, cada cotação perde no máximo uma leitura (≤ 100 ms), e não quatro operações. Os testes `TestRedisDownIsReportedAndLooksLikeAnEmptyCache` e `TestAHungRedisCostsAtMostTheTimeout` prendem esse teto. Com as 5 tentativas de conexão padrão do cliente Redis, a mesma leitura levava ~430 ms (medido).
-
-**Como fica no código:** a chave é montada por `internal/quotecache/key.go` e o Redis é acessado por `internal/quotecache/redis.go` (`MGET` para as três parceiras de uma vez; `SET` com `EX` de 24 h). Os prazos vêm de `CACHE_FRESH_TTL` e `CACHE_MAX_AGE`, o segredo do HMAC de `CACHE_KEY_SECRET`, e `REDIS_ADDR=off` desliga o cache. Sem segredo configurado, a API sorteia um a cada início: o cache continua isolado e ilegível, mas só vale enquanto o processo viver.
+**Se o Redis cair**, a leitura vira *miss* e a cotação continua (§7.2). Cada operação tem teto de **100 ms**, sem nova tentativa: um quinto do menor timeout de parceira. Se a leitura falhar, a cotação não tenta gravar: o Redis fora custa no máximo uma leitura. Com as 5 tentativas de conexão padrão do cliente Redis, a mesma leitura levava ~430 ms (medido; `TestRedisDownIsReportedAndLooksLikeAnEmptyCache` e `TestAHungRedisCostsAtMostTheTimeout` prendem o teto).
 
 ### 4.4 Fallback e contrato da resposta (D8, D9, D10)
 
-#### Estratégia (D8)
+**Estratégia (D8).** Opções: (a) resposta parcial; (b) cotação anterior do cache; (c) recusa explícita. **Escolha: (a).** A corretora recebe as cotações disponíveis e a lista das parceiras que faltaram, com o motivo. Na falha de uma parceira, a política de vencimento do cache (§4.3) pode preencher o lugar dela; isso não é uma segunda estratégia, é a política de cache agindo dentro da resposta parcial. Só quando **nada** está disponível há recusa, com o **503** do RF-08. **Defesa:** é a única opção que melhora as duas pontas medidas no "antes", a taxa de sucesso (60%) e o desperdício de consultas (4,36 por cotação entregue). **Descartadas:** (b) a primeira cotação de um risco nunca teria fallback; (c) troca o 502 por um erro claro, mas mantém o sucesso e o desperdício como estão. **Consequência ruim:** a proposta mais barata pode estar na parceira que faltou; por isso `missing_partners` é obrigatório, e a corretora decide se recota.
 
-**Opções.** (a) resposta parcial; (b) cotação anterior do cache; (c) recusa explícita.
+**Onde vive no código (D9).** Os testes originais `TestOnePartnerDownBringsDownTheWholeRequest` e `TestQuotesResponds502WithTheNameOfThePartnerThatWentDown` exigem que `Service.Quote` e a API montada com `NewAPI` devolvam erro quando uma parceira falha, e R9 proíbe quebrá-los. **Escolha:** os dois mantêm o comportamento original; o fallback entra por um método novo, `Service.QuoteWithFallback`, e por uma opção nova, `WithFallback()`, que o `cmd/quotation-api/main.go` liga. **Descartada:** mudar `Service.Quote` e os testes viola R9; não ligar o fallback no `main.go` deixaria a corretora recebendo 502, o que o enunciado diz que "não conta". **Consequência ruim:** `Service.Quote` passa a ser usado só pelos testes.
 
-**Escolha: (a) resposta parcial.** A corretora recebe as cotações das parceiras disponíveis e a lista explícita das que faltaram, com o motivo.
-
-Na falha de uma parceira, a **política de cache** (§4.3) pode preencher o lugar dela com a cotação vencida, marcada com a idade. Isso não é uma segunda estratégia: é a política de vencimento do cache agindo dentro da resposta parcial. Quando **nada** está disponível (nenhuma parceira respondeu e não há cache), a resposta parcial ficaria vazia; esse é o único caso de recusa, com o **503** do RF-08.
-
-**Defesa.** É a única opção que melhora as duas pontas medidas no "antes": a taxa de sucesso (60%, RNF-02) e o desperdício de consultas (4,36 por cotação entregue, RNF-03). As consultas feitas antes de uma falha deixam de ser jogadas fora.
-
-**Descartadas.** (b) depende de cache: a primeira cotação de um risco nunca teria fallback. (c) troca o 502 genérico por um erro claro, mas mantém a taxa de sucesso e o desperdício como estão.
-
-**Consequências ruins.** A proposta mais barata pode estar justamente na parceira que faltou, e a corretora pode vender a segunda mais barata sem saber. Por isso `missing_partners` é obrigatório na resposta degradada: a corretora decide se recota.
-
-#### Onde vive no código (D9)
-
-**Contexto.** O teste original `TestOnePartnerDownBringsDownTheWholeRequest` (`internal/quotation/service_test.go`) exige que `Service.Quote` devolva erro quando uma parceira falha, e a regra R9 proíbe quebrá-lo.
-
-**Escolha.** `Service.Quote` fica como está. Um **novo método**, `Service.QuoteWithFallback` em `internal/quotation/service.go`, faz a agregação com cache e resposta parcial, e é ele que o handler passa a usar. Os testes originais continuam testando o comportamento original, que continua existindo.
-
-O mesmo vale para o handler: o teste original `TestQuotesResponds502WithTheNameOfThePartnerThatWentDown` (`internal/quotation/handler_test.go`) monta a API com `NewAPI` e exige **502** quando uma parceira falha. Por isso `NewAPI` mantém o comportamento original, e uma **opção nova**, `WithFallback()` em `internal/quotation/handler.go`, liga o caminho com fallback. O `cmd/quotation-api/main.go` usa essa opção; os testes originais, não. Sem isso, o fallback existiria só no código e a corretora continuaria recebendo 502, que é exatamente o que o enunciado diz que "não conta".
-
-**Descartadas.** Mudar `Service.Quote` e o teste viola R9. Um tipo novo em outro pacote afastaria o fallback do `service.go`, que é onde o enunciado o espera.
-
-**Consequência ruim.** `Service.Quote` passa a ser usado só pelos testes. Isso é declarado no README do processo.
-
-#### Contrato da resposta (D10)
-
-**Escolha.** Campos **acrescentados** ao `Response` de `internal/quotation/request.go`, sem remover nenhum. Um cliente que ignore campos novos continua funcionando.
+**Contrato da resposta (D10).** Opções: (a) só um cabeçalho; (b) só um booleano; (c) booleano mais detalhe. **Escolha: (c), só acrescentando campos** ao `Response` de `internal/quotation/request.go`: quem ignora campo novo continua funcionando. **Descartadas:** (a) passa despercebido e não cabe o motivo; (b) não diz o que degradou. **Consequência ruim:** contrato maior para documentar.
 
 | Campo | Onde | Significado |
 |---|---|---|
-| `degraded` | resposta | `true` se alguma parceira faltou **ou** se alguma cotação é vencida |
-| `missing_partners` | resposta | lista de `{partner, reason}`; `reason` ∈ `circuit_open`, `timeout`, `partner_error`; omitido quando nenhuma parceira faltou |
+| `degraded` | resposta | `true` se alguma parceira faltou **ou** alguma cotação é vencida |
+| `missing_partners` | resposta | `{partner, reason}`, com `reason` ∈ `circuit_open`, `timeout`, `partner_error`; omitido quando nenhuma faltou |
 | `source` | cada cotação | `partner` (consultada agora) ou `cache` |
 | `age_seconds` | cada cotação | idade desde a consulta original; 0 quando `source` é `partner` |
-| `stale` | cada cotação | `true` se a cotação passou de 1 h e só foi servida por causa de uma falha |
+| `stale` | cada cotação | `true` se passou de 1 h e só foi servida por causa de uma falha |
 
-Os campos que vêm da parceira (`partner`, `quote_id`, `premium_cents`, `currency`, `coverage_cents`, `valid_for_seconds`) são repassados **como a parceira os devolveu**, inclusive numa cotação de cache: a plataforma não reescreve dado de seguradora. Por isso uma cotação de cache com 50 min pode trazer `valid_for_seconds: 300`, que é a validade **técnica** que o mock declara. A validade **comercial** é de 24 h (R8, P4), e a idade real está em `age_seconds`.
-
-Exemplo de resposta degradada, com a `partner-flaky` com circuito aberto e sem cotação no cache:
+Exemplo, com a `partner-flaky` com o circuito aberto e a `partner-slow` vinda do cache (valores ilustrativos; o outro item de `quotes` foi omitido):
 
 ```json
 {
   "tenant_id": "corretora-a",
   "degraded": true,
   "quotes": [
-    {
-      "partner": "partner-degrading",
-      "quote_id": "partner-degrading-6c1e0b7a9f3d2e14",
-      "premium_cents": 71230,
-      "currency": "BRL",
-      "coverage_cents": 5000000,
-      "valid_for_seconds": 300,
-      "source": "partner",
-      "age_seconds": 0,
-      "stale": false
-    },
-    {
-      "partner": "partner-slow",
-      "quote_id": "partner-slow-0a4f9c2b7e1d3f88",
-      "premium_cents": 118400,
-      "currency": "BRL",
-      "coverage_cents": 6000000,
-      "valid_for_seconds": 300,
-      "source": "cache",
-      "age_seconds": 742,
-      "stale": false
-    }
+    { "partner": "partner-slow", "quote_id": "partner-slow-0a4f9c2b7e1d3f88", "premium_cents": 118400,
+      "currency": "BRL", "coverage_cents": 6000000, "valid_for_seconds": 300,
+      "source": "cache", "age_seconds": 742, "stale": false }
   ],
-  "missing_partners": [
-    { "partner": "partner-flaky", "reason": "circuit_open" }
-  ],
+  "missing_partners": [ { "partner": "partner-flaky", "reason": "circuit_open" } ],
   "elapsed_ms": 4
 }
 ```
 
-Os valores são ilustrativos. A ordenação por `premium_cents` crescente se mantém (RF-02).
+Os campos da parceira são repassados **como ela os devolveu**, inclusive numa cotação de cache: por isso uma cotação de 50 min pode trazer `valid_for_seconds: 300`, a validade técnica do mock; a validade comercial é de 24 h (R8), e a idade real está em `age_seconds`.
 
-**Rastreabilidade (R6).** Uma cotação servida do cache carrega o `quote_id` **original** da parceira e a sua idade: o registro de auditoria **[proposta]** consegue ligá-la à consulta que a originou. Cada cotação apresentada, de cache ou não, gera um registro (corretora, parceira, `quote_id`, prêmio, instante de apresentação, `source`, idade). A persistência desse registro está fora do escopo do PoC (enunciado, "Fora de escopo") e tem o custo calculado na §8.
+**Rastreabilidade (R6).** A cotação de cache carrega o `quote_id` **original** e a idade, e o registro de auditoria **[proposta]** a liga à consulta que a originou: cada cotação apresentada, de cache ou não, gera um registro (corretora, parceira, `quote_id`, prêmio, instante, `source`, idade), com custo na §8.
 
 ### 4.5 O que fica observável
 
-A instrumentação é o método de prova das decisões acima (enunciado, Entrega 2 §4). Os nomes abaixo são os que o código emite e os que aparecem no Prometheus, conferidos com o ambiente de pé; o Collector converte o nome OTel (pontos e unidade) para o formato do Prometheus.
-
-**Métricas de negócio** (código em `internal/partner/metrics.go` e `internal/quotation/telemetry.go`):
+A instrumentação é o método de prova das decisões acima. Os nomes são os que o código emite e os que aparecem no Prometheus, conferidos com o ambiente de pé (o Collector converte o nome OTel para o do Prometheus). As consultas e os limiares estão nos alertas da §6.2.
 
 | Para provar | Nome no código (OTel) | Nome no Prometheus | Tipo | Rótulos |
 |---|---|---|---|---|
-| §4.2: o estado de cada circuito no tempo | `partner.breaker.state` | `partner_breaker_state` | gauge: 0 fechado, 1 meio-aberto, 2 aberto | `partner` |
-| §4.2: cada mudança de estado, com origem e destino | `partner.breaker.transitions` | `partner_breaker_transitions_total` | contador | `partner`, `from`, `to` |
-| §4.3 e P1: o hit rate do cache | `quote.cache.lookups` | `quote_cache_lookups_total` | contador | `partner`, `result` ∈ `hit` (fresca servida, parceira não chamada), `miss` (nada fresco), `stale` (vencida servida na falha), `error` (Redis não respondeu) |
-| §4.1: a latência de cada parceira, com significado de domínio | `partner.quote.duration` | `partner_quote_duration_seconds` | histograma (s) | `partner`, `outcome` ∈ `success`, `timeout`, `error`, `circuit_open` |
+| §4.2: o estado de cada circuito | `partner.breaker.state` | `partner_breaker_state` | gauge: 0 fechado, 1 meio-aberto, 2 aberto | `partner` |
+| §4.2: cada transição | `partner.breaker.transitions` | `partner_breaker_transitions_total` | contador | `partner`, `from`, `to` |
+| §4.3 e P1: o hit rate | `quote.cache.lookups` | `quote_cache_lookups_total` | contador | `partner`, `result` ∈ `hit`, `miss`, `stale`, `error` |
+| §4.1: a latência de cada parceira | `partner.quote.duration` | `partner_quote_duration_seconds` | histograma (s) | `partner`, `outcome` ∈ `success`, `timeout`, `error`, `circuit_open` |
 
-A latência por parceira é uma métrica **nova**, e não o reaproveitamento de `http_client_request_duration_seconds`, porque a de HTTP não enxerga o que não virou HTTP: com o circuito aberto não há chamada, e `outcome="circuit_open"` mostra essas requisições, que levam ~0 s. Os baldes do histograma acompanham os timeouts da §4.1 (0,5 s e 2 s) e o teto de 6 s da `partner-degrading`.
+A latência por parceira é **nova**, e não o reaproveitamento de `http_client_request_duration_seconds`: a métrica de HTTP não vê o que não virou HTTP, e `outcome="circuit_open"` mostra as requisições curto-circuitadas. Hit rate: `sum(rate(quote_cache_lookups_total{result="hit"}[5m])) / sum(rate(quote_cache_lookups_total[5m]))`.
 
-Consultas que usam essas métricas:
+**Marcações no trace:** cada parceira ganha um span `quote {parceira}`, filho do `POST /quotes`; quando a parceira é chamada, o `HTTP POST` dela é filho desse span.
 
-```text
-# estado do circuito de cada parceira (o degrau fechado → aberto → meio-aberto → fechado)
-partner_breaker_state
-
-# hit rate do cache nos últimos 5 minutos
-sum(rate(quote_cache_lookups_total{result="hit"}[5m])) / sum(rate(quote_cache_lookups_total[5m]))
-
-# p95 de cada parceira, só das chamadas que saíram
-histogram_quantile(0.95, sum by (partner, le) (rate(partner_quote_duration_seconds_bucket{outcome!="circuit_open"}[5m])))
-```
-
-**Marcações no trace** (código em `internal/quotation/telemetry.go`): cada parceira ganha um span `quote {parceira}`, filho do span `POST /quotes`. Quando a parceira é chamada, o `HTTP POST` dela é filho desse span; quando não é, o span fica sem filho e os atributos dizem por quê.
-
-| Marcação | Atributo no span `quote {parceira}` | Como se vê no Jaeger |
+| Marcação | Atributos no span `quote {parceira}` | No Jaeger |
 |---|---|---|
-| **Requisição curto-circuitada** pelo breaker (RNF-05) | `breaker.short_circuited=true`, `quote.missing_reason=circuit_open`, evento `circuit open: partner not called`, status de erro | span de ~0 ms **sem** `HTTP POST` embaixo |
-| **Resposta servida de cache** (RF-06) | `quote.source=cache`, `cache.result=hit` (ou `stale`) | span de ~0 ms **sem** `HTTP POST` embaixo |
-| Cotação consultada agora | `quote.source=partner`, `cache.result=miss` | span com o `HTTP POST` da parceira embaixo |
+| **Requisição curto-circuitada** (RNF-05) | `breaker.short_circuited=true`, `quote.missing_reason=circuit_open`, evento `circuit open: partner not called` | span de ~0 ms **sem** `HTTP POST` |
+| **Resposta servida de cache** (RF-06) | `quote.source=cache`, `cache.result=hit` (ou `stale`) | span de ~0 ms **sem** `HTTP POST` |
 
-O span `POST /quotes` ainda recebe o resumo: `tenant.id`, `quote.degraded`, `quote.count`, `quote.from_cache` e `quote.missing_partners`.
-
-**Nunca** entram em atributo de span ou de métrica: CPF, placa, `quote_id` (dado pessoal e cardinalidade sem teto). O `tenant_id` entra só no span da requisição, e **não** como rótulo de métrica: o escopo do breaker é por parceira, e centenas de corretoras multiplicariam as séries. Isso é preso pelo teste `TestNoPersonalDataInMetricsOrSpans` e foi conferido nos dados reais da sessão do "depois": zero ocorrências em 1041 traces e 409 séries ([evidencias/sem-dado-pessoal-depois.txt](evidencias/sem-dado-pessoal-depois.txt)).
+O span `POST /quotes` recebe o resumo: `tenant.id`, `quote.degraded`, `quote.count`, `quote.from_cache`, `quote.missing_partners`. **Nunca** entram em span ou métrica: CPF, placa, `quote_id`; o `tenant_id` fica fora das métricas, porque centenas de corretoras multiplicariam as séries. Isso é preso por `TestNoPersonalDataInMetricsOrSpans` e foi conferido nos dados reais: zero ocorrências em 210 traces e 268 séries ([evidencias/sem-dado-pessoal-depois.txt](evidencias/sem-dado-pessoal-depois.txt)), e em 1041 traces e 409 séries da sessão em série ([evidencias/sem-dado-pessoal-depois-serie.txt](evidencias/sem-dado-pessoal-depois-serie.txt)).
 
 ### 4.6 Componentes da fatia implementada (C4 nível 3)
 
@@ -545,49 +420,33 @@ flowchart TB
   telemetry -- "OTLP/gRPC :4317" --> otel
 ```
 
-**Fluxo por parceira, dentro do agregador:**
-
-1. Há cotação **fresca** no cache? → usa (`source: cache`). A parceira **não** é chamada.
-2. O circuito da parceira está **aberto**? → não chama. Há cotação **vencida** (até 24 h)? → usa, com `stale: true`. Senão → `missing_partners` com `circuit_open`.
-3. Chama a parceira pelo breaker, com o timeout dela. Sucesso → usa (`source: partner`) e grava no cache.
-4. Falhou (timeout ou erro)? → há cotação vencida? → usa, com `stale: true`. Senão → `missing_partners` com `timeout` ou `partner_error`.
-
-As três parceiras seguem esse fluxo **ao mesmo tempo** (§4.8, D16). Depois das três: se há ao menos uma cotação, responde **200** ordenado por prêmio (com `degraded` quando faltou algo); se não há nenhuma, **503** (RF-08).
+**Fluxo por parceira, as três ao mesmo tempo (§4.8):** (1) cotação **fresca** no cache? usa, sem chamar a parceira; (2) circuito **aberto**? não chama: usa a **vencida** (até 24 h) ou registra `circuit_open`; (3) chama pelo breaker, com o timeout dela: sucesso, usa e grava no cache; (4) falhou? usa a vencida ou registra `timeout` ou `partner_error`. Com ao menos uma cotação, responde **200** ordenado por prêmio; sem nenhuma, **503** (RF-08).
 
 ### 4.7 Limites conhecidos
 
-O que esta arquitetura **não** resolve. Nenhum destes é para implementar; declarar a fronteira faz parte da arquitetura.
+O que esta arquitetura **não** resolve; nenhum é para implementar.
 
 | # | Limite | Gatilho que o expõe | Efeito na corretora |
 |---|---|---|---|
-| **L1** | **Sem limite de chamadas simultâneas por parceira.** O timeout corta a espera, mas não impede que a API abra muitas chamadas ao mesmo tempo. | Cache frio com carga alta e riscos variados: depois de uma perda do Redis (cenário (a) da §7), ou em horário de pico com cotações novas, dezenas de requisições chegam juntas, todas são *miss* e vão às parceiras ao mesmo tempo. A `partner-degrading` passa de 7 simultâneas, estoura o timeout e o circuito dela abre. Na carga padrão do `make reproduce` isso quase não aparece, porque as 10 requisições do baseline já gravam as 5 cotações distintas antes da rajada de 50. | Logo depois da perda do cache, a `partner-degrading` falta em várias cotações (`missing_partners: timeout`, depois `circuit_open`), até o cache aquecer e o breaker fechar. |
-| **L2** | **O breaker vive na memória do processo** e não atravessa réplicas. | Mais de uma réplica da `quotation-api`, ou um reinício do processo. | Com N réplicas, cada uma descobre sozinha que a parceira caiu: até N × 10 chamadas pagas antes de todas abrirem. Depois de um reinício, o circuito volta fechado e a parceira ruim é chamada de novo. **[proposta]** A própria biblioteca traz uma variante com estado compartilhado (`distributed_gobreaker.go` no gobreaker v2.4.0), que pode guardar o estado no mesmo Redis quando houver mais de uma réplica. |
-| **L3** | **O TTL é a única forma automática de invalidar o cache.** | A seguradora muda o preço, ou uma corretora renegocia as condições comerciais, no meio da hora. | A corretora vê o preço antigo por até 1 h (fresca) e, durante uma falha da parceira, por até 24 h (vencida, mas marcada). A invalidação por corretora fica como proposta (§4.3). |
-| **L4** | **Uma corretora pode consumir a capacidade das outras.** O escopo do breaker é por parceira, e não há cota por corretora. | Uma corretora com volume alto, ou com pedidos que a parceira rejeita, gera falhas e lentidão que abrem o circuito da parceira. | **Todas** as corretoras perdem aquela parceira por 15 s a cada abertura, por causa de uma só. |
+| **L1** | **Sem limite de chamadas simultâneas por parceira.** O timeout corta a espera, mas não limita quantas chamadas saem juntas. A agregação paralela (§4.8) agrava: a `partner-degrading` passa a receber as chamadas no ritmo da entrada, e não espaçadas pela `partner-slow`. | Cache frio com carga alta e riscos variados (perda do Redis, §7.2, ou pico de cotações novas): todas são *miss* ao mesmo tempo, a `partner-degrading` passa de 7 simultâneas e o circuito dela abre. Na carga padrão quase não aparece: o baseline já grava as 5 cotações antes da rajada. | A `partner-degrading` falta em várias cotações (`timeout`, depois `circuit_open`) até o cache aquecer. |
+| **L2** | **O breaker vive na memória do processo.** | Mais de uma réplica, ou um reinício. | Cada réplica descobre sozinha que a parceira caiu: até N × 12 chamadas pagas. **[proposta]** O gobreaker v2.4.0 traz uma variante com estado compartilhado (`distributed_gobreaker.go`), que pode usar o mesmo Redis. |
+| **L3** | **O TTL é a única invalidação automática.** | A seguradora muda o preço, ou a corretora renegocia, no meio da hora. | Preço antigo por até 1 h, ou até 24 h na falha da parceira (marcado). |
+| **L4** | **Uma corretora pode consumir a capacidade das outras.** Breaker por parceira, sem cota por corretora. | Uma corretora com volume alto ou pedidos ruins abre o circuito da parceira. | **Todas** perdem aquela parceira por 15 s a cada abertura. |
+| **L5** | **Com pouco tráfego, o breaker quase não abre** (D14): a janela de 30 s precisa de no mínimo 10 chamadas. | Na 2D, uma cotação a cada ~3 s ficou abaixo de 50% de falha na `partner-flaky` (15 em 40) e o circuito não abriu ([evidencias/variacao-curto-circuito-rapido.txt](evidencias/variacao-curto-circuito-rapido.txt)); em produção (P3), cada janela junta ~100 chamadas. | Nesses horários, a parceira ruim continua sendo chamada e paga. A janela deslizante (`BucketPeriod`) é a alternativa estudada e não adotada. |
 
-Um quinto limite apareceu medindo (D14):
-
-| # | Limite | Gatilho que o expõe | Efeito na corretora |
-|---|---|---|---|
-| **L5** | **Com pouco tráfego, o breaker quase não abre.** A janela de 30 s precisa de no mínimo 10 chamadas, e a proporção de falha só é avaliada dentro dela. | Horário de pouco movimento: na 2D, uma cotação a cada ~3 s juntou ~10 chamadas por janela, e a `partner-flaky` ficou abaixo de 50% de falha (15 em 40); o circuito não abriu ([evidencias/variacao-curto-circuito-rapido.txt](evidencias/variacao-curto-circuito-rapido.txt)). Em produção (P3) cada janela junta ~100 chamadas. | Nesses horários, uma parceira ruim continua sendo chamada: a cotação sai com ela em `missing_partners` (`partner_error` ou `timeout`) e a consulta é paga, em vez de curto-circuitada. A janela deslizante (`BucketPeriod` do gobreaker v2.4.0) é a alternativa estudada e não adotada. |
-
-A agregação paralela (§4.8) **agrava o L1**: em série, a `partner-degrading` só recebia a chamada depois da `partner-slow` (~1,7 s depois), o que espalhava as chamadas no tempo; em paralelo, ela recebe a chamada no mesmo instante em que a requisição chega, e a concorrência nela passa a ser a da própria entrada.
-
-Mais um ponto que vale citar, e que não é código desta entrega (enunciado, "Fora de escopo"): duas requisições concorrentes da mesma corretora para o mesmo risco, uma servida de cache e outra da parceira, podem devolver **dois prêmios diferentes para o mesmo risco no mesmo minuto**, se a parceira tiver mudado o preço desde a gravação. Os dois são preços reais e rastreáveis; nenhum é inventado.
+Vale citar, sem ser código desta entrega (enunciado, "Fora de escopo"): duas requisições concorrentes da mesma corretora para o mesmo risco, uma de cache e outra da parceira, podem devolver **dois prêmios diferentes no mesmo minuto**, se a parceira mudou o preço; os dois são reais e rastreáveis.
 
 ### 4.8 Agregação paralela (D16, bônus)
 
-**Contexto.** Em série, a cotação leva a **soma** das três parceiras: no "antes", 1701 + 201 + 6149 ms no trace mais lento ([evidencias/antes.md](evidencias/antes.md), evidência 3). Com cache e breaker, a soma só pesa quando há *miss*: a cotação nova espera a `partner-slow` (~1,7 s) e depois as outras duas. O teste original `TestQuoteCallsThePartnersSerially` exige que `Service.Quote` continue em série (R9). O enunciado deixa a paralelização como bônus e pede que, se implementada, seja tratada como decisão, porque muda o p95.
+**Contexto.** Em série, a cotação leva a **soma** das três parceiras (no "antes", 1701 + 201 + 6149 ms no trace mais lento). Com cache, a soma só pesa no *miss*. O teste original `TestQuoteCallsThePartnersSerially` exige que `Service.Quote` continue em série (R9), e o enunciado pede que o bônus seja tratado como decisão, porque muda o p95.
 
-**Opções.** (a) manter em série; (b) consultar as três ao mesmo tempo, no caminho com fallback; (c) consultar em paralelo com um teto de tempo para a cotação inteira, devolvendo o que chegou até ali.
+**Opções.** (a) manter em série; (b) consultar as três ao mesmo tempo, no caminho com fallback; (c) em paralelo, com um teto de tempo para a cotação inteira.
 
-**Escolha: (b).** `Service.QuoteWithFallback` dispara as três parceiras ao mesmo tempo, espera as três e monta a resposta **na ordem das parceiras**, para que ela não dependa de quem terminou primeiro. `Service.Quote` continua em série. A leitura do cache continua sendo um único `MGET`, antes das chamadas.
+**Escolha: (b).** `Service.QuoteWithFallback` dispara as três ao mesmo tempo e monta a resposta **na ordem das parceiras**, para não depender de quem terminou primeiro; `Service.Quote` continua em série. **Defesa:** a cotação leva o tempo da parceira mais lenta, e o teto cai de 3,0 s para 2,0 s (a RNF-01 e a RNF-04 foram revistas com ele). Medido com a carga padrão: o p95 do baseline cai de 2,04 s ([evidencias/reproduce-depois-serie.txt](evidencias/reproduce-depois-serie.txt)) para **1,68 s**, e numa cotação nova as três chamadas começam no mesmo instante e a cotação leva 1,63 s, o tempo da `partner-slow` ([evidencias/trace-depois-paralelo.json](evidencias/trace-depois-paralelo.json)); as consultas compradas não mudam (57 para 210 cotações).
 
-**Defesa.** A cotação passa a levar o tempo da parceira **mais lenta**, e não a soma. O teto estrutural cai de 3,0 s para 2,0 s (o maior timeout da §4.1), e os alvos da RNF-01 e da RNF-04 foram revistos com ele. Medido com a carga padrão ([evidencias/depois.md](evidencias/depois.md)): o p95 do baseline, em que as 5 primeiras cotações vão às parceiras, cai de 2,04 s (em série, [evidencias/reproduce-depois-serie.txt](evidencias/reproduce-depois-serie.txt)) para **1,68 s**; no trace de uma cotação nova, as três chamadas começam no mesmo instante e a cotação leva 1,63 s, o tempo da `partner-slow` ([evidencias/trace-depois-paralelo.json](evidencias/trace-depois-paralelo.json)). O número de consultas compradas não muda: 57 para 210 cotações nas duas execuções.
+**Descartadas.** (a) mantém a soma, a causa da latência no "antes". (c) acrescenta um terceiro prazo: os timeouts já limitam a cotação a 2,0 s, e um teto menor descartaria respostas pagas.
 
-**Descartadas.** (a) mantém a soma, que é exatamente o que o "antes" mostrou como causa da latência. (c) acrescenta um terceiro prazo além dos timeouts e da janela do breaker: os timeouts por parceira já limitam a cotação a 2,0 s, e um teto menor descartaria respostas que a parceira ainda daria dentro do prazo dela, pagas e jogadas fora.
-
-**Consequências ruins.** A `partner-degrading` deixa de receber as chamadas espaçadas pela `partner-slow` e passa a recebê-las no ritmo da entrada, o que agrava o L1 (§4.7). Cada requisição passa a abrir três chamadas ao mesmo tempo, em vez de uma por vez. O código tem concorrência: o teste `TestTheFallbackPathQuotesThePartnersAtTheSameTime` prova que as três ficam em voo juntas, `TestTheParallelResponseIsTheSameWhoeverFinishesFirst` prova que a resposta não depende da ordem de chegada, e a suíte passa no detector de corrida (`go test -race`, [evidencias/make-test.txt](evidencias/make-test.txt)).
+**Consequências ruins.** Agrava o L1 (§4.7); cada requisição abre três chamadas ao mesmo tempo; e o código passa a ter concorrência, coberta por `TestTheFallbackPathQuotesThePartnersAtTheSameTime`, `TestTheParallelResponseIsTheSameWhoeverFinishesFirst` e pelo detector de corrida ([evidencias/make-test.txt](evidencias/make-test.txt)).
 
 ---
 
@@ -607,7 +466,7 @@ Mais um ponto que vale citar, e que não é código desta entrega (enunciado, "F
 | Valores padrão e validação | `internal/platform/config.go` | — | todas as acima | `internal/platform/config_resilience_test.go` |
 | Ligação de tudo | `cmd/quotation-api/main.go`, `docker-compose.yml` | — | — | `make reproduce` ([evidencias/depois.md](evidencias/depois.md)) |
 
-**Por que esta biblioteca de breaker:** expõe os três estados como constantes e o callback de transição que vira métrica sem código extra (§4.2, D2). **Por que este cliente Redis:** é o cliente oficial do Redis para Go e permite limitar cada operação pelo contexto, o que garantiu o teto de 100 ms (§4.3).
+A escolha das bibliotecas está defendida na §4.2 (breaker) e na §4.3 (o cliente Redis oficial, que permite limitar cada operação pelo contexto).
 
 **Como se testa sem depender de sorte**, no padrão do `cmd/partner-mock/feasibility_test.go`: o teste do breaker usa as 60 primeiras respostas **medidas** da `partner-flaky` (smoke §2.2) e prova que o circuito abre na requisição 12 e que, aberto, a parceira não é chamada; o do cache usa o relógio do miniredis para avançar 24 h; os do fallback usam relógio fixo e cache em memória. Nenhum usa `sleep`. A suíte inteira passa, inclusive no detector de corrida: 102 testes, 64 originais e 38 novos ([evidencias/make-test.txt](evidencias/make-test.txt)).
 
