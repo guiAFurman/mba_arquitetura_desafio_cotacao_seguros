@@ -32,7 +32,7 @@ Preparação
                     └─► Fechamento ─► Extras (opcional, só com o resto pronto)
 ```
 
-**Status atual:** **Entrega 1 concluída** ([sad.md](sad.md), versão 1.0, as oito seções) e **Entrega 2 concluída** (2A mecanismos, 2B instrumentação, 2C testes, 2D evidências). Próximo passo: **Fechamento** (README do processo, revisão de coerência e de tamanho, merge na `main`).
+**Status atual:** **Entrega 1 concluída** ([sad.md](sad.md), versão 1.0, as oito seções) e **Entrega 2 concluída** (2A mecanismos, 2B instrumentação, 2C testes, 2D evidências). Bônus (agregação paralela) e **README do processo** concluídos. Falta só o **push da `development` e o merge na `main` pelo GitHub**, com o fork público.
 
 ---
 
@@ -255,22 +255,22 @@ Tudo em `docs/evidencias/`, cada uma com **comando/consulta + artefato + legenda
 
 Depende das duas entregas.
 
-- [ ] ⚠️ O `README.md` da raiz **ainda é o enunciado original**: ele é substituído pelo README do processo (o enunciado já está em `docs/enunciado.md`)
-- [ ] **README do processo** na raiz, com as cinco coisas:
-  - [ ] links para o SAD e as evidências
-  - [ ] como subir o ambiente e reproduzir
-  - [ ] o que foi implementado e o que ficou como proposta
-  - [ ] **a chave do cache por extenso** (o enunciado exige no SAD **e** no README)
-  - [ ] **o contrato da resposta degradada** (`degraded`, `missing_partners`, `source`, `age_seconds`, `stale`) e o **503 novo** (`no partner insurer available`): o enunciado manda documentar a mudança de contrato no README
-  - [ ] as variáveis de configuração novas (`PARTNER_TIMEOUTS`, `BREAKER_*`, `REDIS_*`, `CACHE_*`) e que `Service.Quote`/`NewAPI` sem `WithFallback()` mantêm o comportamento original por causa dos testes originais
-  - [ ] **limitações do ambiente documentadas** (o enunciado manda documentar no README em vez de contornar em silêncio): a carga padrão dura 11 s e as métricas são exportadas a cada 10 s, por isso a subida do hit rate não aparece com ela (evidência 6 veio da variação 3); com a carga padrão nenhuma requisição é curto-circuitada, porque as 5 cotações já estão no cache (evidência 3 veio da variação 4); o hit rate da carga padrão foi 91%, e não ~98%, porque o cache não guarda falha da `partner-flaky`
-  - [ ] nomes das métricas e dos atributos criados, com **os dois nomes** de cada métrica (o do código, `partner.breaker.state`, e o do Prometheus, `partner_breaker_state`): o avaliador procura o nome declarado no repositório, e o nome do Prometheus está nos comentários das constantes em `internal/partner/metrics.go` e `internal/quotation/telemetry.go`
-  - [ ] o que faria diferente com mais tempo
-  - [ ] um parágrafo com o "coração da solução": o que foi protegido, com o quê e quanto custou
-- [ ] **Coerência:** todo caminho, biblioteca, métrica e endpoint citado **existe** ou está marcado como **proposta**
-- [ ] **Coerência:** TTL, limiares e nomes de métrica **iguais** no SAD e no código
-- [ ] **Coerência:** hit rate da §8 compatível com o TTL da §4 e o pressuposto de recotação da §1
-- [ ] `docs/enunciado.md`, `docs/sad.md` e `docs/evidencias/` no lugar
+- [x] O `README.md` da raiz deixou de ser o enunciado original (que está em `docs/enunciado.md`) e passou a ser o README do processo
+- [x] **README do processo** na raiz, com as cinco coisas (conferido: os 8 nomes de métrica e os 10 atributos declarados são achados no código Go; caminhos, links e variáveis existem):
+  - [x] links para o SAD e as evidências
+  - [x] como subir o ambiente e reproduzir
+  - [x] o que foi implementado e o que ficou como proposta
+  - [x] **a chave do cache por extenso** (o enunciado exige no SAD **e** no README)
+  - [x] **o contrato da resposta degradada** (`degraded`, `missing_partners`, `source`, `age_seconds`, `stale`) e o **503 novo** (`no partner insurer available`): o enunciado manda documentar a mudança de contrato no README
+  - [x] as variáveis de configuração novas (`PARTNER_TIMEOUTS`, `BREAKER_*`, `REDIS_*`, `CACHE_*`) e que `Service.Quote`/`NewAPI` sem `WithFallback()` mantêm o comportamento original por causa dos testes originais
+  - [x] **limitações do ambiente documentadas** (o enunciado manda documentar no README em vez de contornar em silêncio): a carga padrão dura 11 s e as métricas são exportadas a cada 10 s, por isso a subida do hit rate não aparece com ela (evidência 6 veio da variação 3); com a carga padrão nenhuma requisição é curto-circuitada, porque as 5 cotações já estão no cache (evidência 3 veio da variação 4); o hit rate da carga padrão foi 91%, e não ~98%, porque o cache não guarda falha da `partner-flaky`
+  - [x] nomes das métricas e dos atributos criados, com **os dois nomes** de cada métrica (o do código, `partner.breaker.state`, e o do Prometheus, `partner_breaker_state`): o avaliador procura o nome declarado no repositório, e o nome do Prometheus está nos comentários das constantes em `internal/partner/metrics.go` e `internal/quotation/telemetry.go`
+  - [x] o que faria diferente com mais tempo
+  - [x] um parágrafo com o "coração da solução": o que foi protegido, com o quê e quanto custou
+- [x] **Coerência:** todo caminho, biblioteca, métrica e endpoint citado **existe** ou está marcado como **proposta**
+- [x] **Coerência:** TTL, limiares e nomes de métrica **iguais** no SAD e no código
+- [x] **Coerência:** hit rate da §8 compatível com o TTL da §4 e o pressuposto de recotação da §1
+- [x] `docs/enunciado.md`, `docs/sad.md` e `docs/evidencias/` no lugar
 - [ ] Push da `development` e merge na `main` pelo GitHub
 - [ ] Fork **público**
 
@@ -314,4 +314,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | 1B: SAD §5 a §8 escritos e §1 a §4 revisados com o que foi medido (SAD versão 1.0) | `60f85cf` |
 | 2026-10-27 | Extra: agregação paralela (D16), com testes, decisão no SAD §4.8 e evidências 1, 2, 4 e 7 refeitas | `9357469` |
 | 2026-10-27 | Revisão geral antes do README: critérios de aceite conferidos um a um; referências de todos os documentos, testes, build, smoke e os 4 diagramas validados; duas frases do SAD que ainda descreviam o tempo em série corrigidas | `5377e2d` |
-| 2026-10-27 | SAD enxugado para ~18 páginas (§4 de 5.064 para ~3.000 palavras) sem tirar item exigido; corrigidos dois números desatualizados da §4 (teto de ~3 s e a contagem de traces da busca de dado pessoal) | este commit |
+| 2026-10-27 | SAD enxugado para ~18 páginas (§4 de 5.064 para ~3.000 palavras) sem tirar item exigido; corrigidos dois números desatualizados da §4 (teto de ~3 s e a contagem de traces da busca de dado pessoal) | `07ac523` |
+| 2026-10-27 | README do processo na raiz, no lugar do enunciado original, com as cinco coisas e o parágrafo do coração da solução | este commit |
