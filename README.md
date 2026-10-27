@@ -95,6 +95,7 @@ Documentadas aqui, como pede o enunciado, em vez de contornadas em silêncio:
 - **Janela deslizante no breaker** (`BucketPeriod` do gobreaker), para resolver o L5 sem abrir por acaso, refazendo os testes e as evidências do breaker.
 - **Limite de chamadas simultâneas por parceira**, para o L1 e para o cache frio depois de perder o Redis; é bulkhead, fora do escopo deste desafio.
 - **Agrupar chamadas iguais em voo** (*single-flight*), para que a rajada de cache frio não multiplique as consultas pagas.
+- **Sonda de escrita e leitura no Redis**, fora do caminho da requisição e fora do `/healthz` (sem Redis a API continua cotando): depois de um failover, o Redis pode ficar só leitura, e a gravação que falha hoje só vira log, então o cache para de se renovar sem alarme (SAD §4.7, L6, e o alerta proposto A5 da §6.2).
 - **Medir o pressuposto de recotação em produção** antes de investir, porque a economia da §8 depende dele; o alerta de hit rate (SAD §6.2, A4) é o começo disso.
 - **Implementar o acervo de auditoria** e a cópia fora da região, que hoje são proposta.
 - **Testar o meio-aberto sem relógio real**, com uma biblioteca de breaker que aceite relógio injetado ou um adaptador sobre a atual.
