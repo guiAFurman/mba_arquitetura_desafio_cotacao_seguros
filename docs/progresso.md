@@ -312,4 +312,5 @@ Só depois de todo o obrigatório pronto. Não conta para nenhum critério de ac
 | 2026-10-26 | Revisão da 2D: evidência 3 trocada por um curto-circuito que responde rápido (0,59 ms, variação 4); limitações para o README; achado do breaker com pouco tráfego | `397c940` |
 | 2026-10-26 | Estudo das decisões da 1B (D11 a D15), com preços da AWS, PTAX e salário com fonte | `5beb6d5` |
 | 2026-10-26 | 1B: SAD §5 a §8 escritos e §1 a §4 revisados com o que foi medido (SAD versão 1.0) | `60f85cf` |
-| 2026-10-27 | Extra: agregação paralela (D16), com testes, decisão no SAD §4.8 e evidências 1, 2, 4 e 7 refeitas | este commit |
+| 2026-10-27 | Extra: agregação paralela (D16), com testes, decisão no SAD §4.8 e evidências 1, 2, 4 e 7 refeitas | `9357469` |
+| 2026-10-27 | Revisão geral antes do README: critérios de aceite conferidos um a um; referências de todos os documentos, testes, build, smoke e os 4 diagramas validados; duas frases do SAD que ainda descreviam o tempo em série corrigidas | este commit |

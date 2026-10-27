@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Versão** | 1.0 — as oito seções, com os números medidos do PoC ([evidencias/depois.md](evidencias/depois.md)). |
-| **Data** | 2026-10-26 |
+| **Data** | 2026-10-27 (escrito a partir de 2026-10-26) |
 | **Autor** | Guilherme A. Furmankiewicz |
 | **Base** | repositório deste fork, branch `development`; enunciado em [enunciado.md](enunciado.md) |
 | **Evidências** | [evidencias/](evidencias/) — o "antes" está em [evidencias/antes.md](evidencias/antes.md) |
@@ -258,7 +258,7 @@ Cada decisão está no formato **contexto → opções → escolha → consequê
 
 **Como fica no código** (`internal/partner/client.go`): o `http.Client` deixa de ter `Timeout` zero e passa a ter o maior teto configurado (2000 ms), que nenhuma chamada ultrapassa; cada chamada ainda corta no teto da sua parceira, com `context.WithTimeout`. Os valores vêm de `PARTNER_TIMEOUTS` em `internal/platform/config.go`, e os padrões são os da tabela acima.
 
-**Descartadas.** (a) deixa a `partner-degrading` acumular até 11 chamadas simultâneas antes de estourar (120 + 300 × 6 ≈ 1,9 s) e põe o teto da cotação em 6 s. (b) mata a `partner-slow` em 100% das chamadas, porque ela leva de 1,5 a 1,7 s sempre: o breaker dela abriria e nunca mais fecharia.
+**Descartadas.** (a) deixa a `partner-degrading` acumular até 11 chamadas simultâneas antes de estourar (120 + 300 × 6 ≈ 1,9 s): ela já estaria afundada quando o breaker passasse a enxergá-la. Em série, ainda poria o teto da cotação em 6 s; com a agregação paralela (§4.8) o teto seria o mesmo, 2 s, e o argumento que sobra, e decide, é o da `partner-degrading`. (b) mata a `partner-slow` em 100% das chamadas, porque ela leva de 1,5 a 1,7 s sempre: o breaker dela abriria e nunca mais fecharia.
 
 **Consequências.**
 - Boa: a degradação da `partner-degrading` vira falha contável logo depois do joelho de 5 simultâneas; a cotação nunca passa de ~3 s.
@@ -701,7 +701,7 @@ O mesmo caminho vale para os limiares do breaker e os timeouts: são números de
 
 ### 7.2 Cenário (a): o Redis inteiro se perde
 
-- **O que a corretora vê:** nada no contrato. As cotações continuam saindo **200**, só que todas consultadas agora (`source: partner`), mais lentas (~2 s, a da `partner-slow`) e sem a cotação vencida para cobrir uma parceira em falha.
+- **O que a corretora vê:** nada no contrato. As cotações continuam saindo **200**, só que todas consultadas agora (`source: partner`), mais lentas (~1,7 s, o tempo da `partner-slow`, já que as três são consultadas ao mesmo tempo) e sem a cotação vencida para cobrir uma parceira em falha.
 - **O que degrada:** o custo e a latência. **O que para:** nada.
 - **Custo do modo degradado:** o hit rate cai do P1 (40%) para 0%, e a conta de parceiro volta de R$ 190.080 para R$ 316.800 por mês (§8): **R$ 126.720 por mês**, ou **~R$ 576 por hora** de horário comercial (22 dias × 10 h).
 - **Qual efeito chega primeiro.** O custo chega na primeira hora. O colapso da `partner-degrading` exige mais de 5 chamadas simultâneas nela. Com o P3 (~3,3 cotações por segundo) e ~0,14 s por chamada em repouso, a concorrência nela vai de ~0,3 (com 40% de acerto) para ~0,5 chamada em voo sem cache: o volume sobe 1,67×, mas fica longe de 5. O colapso só vem em pico, ou na rajada de cache frio de riscos novos (L1): aí o timeout de 500 ms corta a espera, o circuito dela abre e as cotações saem sem ela até o cache aquecer.
